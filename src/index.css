@@ -1,0 +1,673 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-red: #ff0000;
+  --color-gray: #e9e9e9;
+  --size-width: 1920;
+  --size-height: 1080;
+  --vw-ratio: 0.5;
+  --vh-ratio: 1;
+  --vr: calc((100vw / var(--size-width) * 16 * var(--vw-ratio, 1) + (1 - var(--vw-ratio, 1)) * 16px + 100vh / var(--size-height) * 16 * var(--vh-ratio, 1) + (1 - var(--vh-ratio, 1)) * 16px) / 2 / 16);
+  --z-index-overlay: 4;
+  --z-index-menu: 20;
+  --z-index-page: 2;
+  --z-index-timeline: 10;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --size-width: 390;
+    --size-height: 844;
+    --vr: 1px;
+  }
+}
+
+html, body {
+  background-color: var(--color-black);
+  color: var(--color-white);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* Track mobile browser chrome instead of being clipped by it */
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Visible keyboard focus for every interactive element (mouse clicks stay clean) */
+:focus-visible {
+  outline: 2px solid var(--color-red);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.layout__menu a:focus-visible {
+  outline-offset: 4px;
+}
+
+/* Section wrappers are focused programmatically on navigation so screen
+   readers announce the change; keep the ring for keyboard users only. */
+.section-frame:focus {
+  outline: none;
+}
+
+.section-frame:focus-visible {
+  outline: 2px solid var(--color-red);
+  outline-offset: -4px;
+}
+
+/* Typography styles matching Roman Jean-Elie */
+.font-anton {
+  font-family: 'Anton', sans-serif;
+  font-weight: 400;
+}
+
+.name-title {
+  font-family: 'Anton', sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  /* Min lowered so the 16-character wordmark never overflows narrow phones */
+  font-size: clamp(2.25rem, 12.4vw, 16rem);
+  line-height: 0.88;
+  text-transform: uppercase;
+}
+
+.job-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1rem, 2.8vw, 3.2rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  margin-bottom: calc(12 * var(--vr));
+}
+
+/* Rotated Side Navigation Menu */
+.layout__menu {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  position: fixed;
+  top: calc(24 * var(--vr));
+  left: calc(24 * var(--vr));
+  z-index: var(--z-index-menu);
+  display: flex;
+  gap: calc(36 * var(--vr));
+  align-items: center;
+  transform-origin: top left;
+  transform: rotate(-90deg) translateX(-100%);
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .layout__menu {
+    top: unset;
+    bottom: 20px;
+    left: 0;
+    width: 100%;
+    transform: none;
+    justify-content: space-evenly;
+    gap: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    padding: 12px 0;
+  }
+}
+
+.layout__menu a {
+  color: #ffffff;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.layout__menu a.active {
+  background-color: #ff0000;
+  color: #ffffff;
+  animation: nav-settle 420ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+/* The active marker used to strobe its own opacity (1 → 0.25 → 1 → 0.35 → 1 in
+   350ms), which read as a rendering glitch and is a photosensitivity risk. It now
+   lands with a single soft red bloom that decays to nothing. */
+@keyframes nav-settle {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+  }
+  35% {
+    box-shadow: 0 0 16px 4px rgba(255, 0, 0, 0.75);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+  }
+}
+
+.layout__menu a:not(.active):hover {
+  color: #ff0000;
+}
+
+/* Fullscreen Section Container */
+.section {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: calc(40 * var(--vr));
+  padding-left: calc(90 * var(--vr));
+  opacity: 0;
+  pointer-events: none;
+  /* Enter timing is tuned against the page transition. The live section swaps at
+     160ms and the flash's black backdrop finishes clearing at ~350ms, so opacity
+     resolves at 160 + 220ms — the section is fully present exactly as the flash
+     clears. Previously it ran for 500ms and was still at ~40%, so every section
+     arrived washed out behind the flash. Transform settles a beat later, so the
+     section keeps breathing into place after it is fully visible. */
+  transition:
+    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(0.985);
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: 24px;
+    /* Clears the fixed bottom navigation bar */
+    padding-bottom: 76px;
+  }
+}
+
+/* Sections opt out of the default padding with Tailwind's `!p-0`; these keep
+   them clear of the fixed mobile bottom nav instead of sliding under it. */
+@media (max-width: 768px) {
+  .page__about,
+  .page__projects,
+  .page__contact {
+    padding-bottom: 64px !important;
+  }
+}
+
+.section.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+  z-index: 2;
+}
+
+/* Outgoing Section Exit Zoom during page transition */
+.section-exit {
+  transform: scale(1.03) !important;
+  opacity: 0.25 !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease-out !important;
+}
+
+/* High-Energy Dual-Layer Strobe Flash for Page Transitions */
+@keyframes transition-flash-white {
+  0% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes transition-flash-red {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  35% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+.transition-flash-white {
+  animation: transition-flash-white 110ms ease-out forwards;
+  will-change: opacity;
+}
+
+.transition-flash-red {
+  animation: transition-flash-red 220ms cubic-bezier(0.12, 0.9, 0.24, 1) forwards;
+  will-change: opacity, transform;
+}
+
+/* Red Glitch Lines & High-Voltage Laser Slices */
+@keyframes glitch-slice-1 {
+  0% {
+    transform: translateX(-80%);
+    opacity: 0;
+  }
+  15% {
+    transform: translateX(8%);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(-6%);
+    opacity: 0.9;
+  }
+  55% {
+    transform: translateX(12%);
+    opacity: 1;
+  }
+  75% {
+    transform: translateX(-3%);
+    opacity: 0.6;
+  }
+  90% {
+    transform: translateX(4%);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateX(80%);
+    opacity: 0;
+  }
+}
+
+@keyframes glitch-slice-2 {
+  0% {
+    transform: translateX(80%);
+    opacity: 0;
+  }
+  15% {
+    transform: translateX(-10%);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(7%);
+    opacity: 0.85;
+  }
+  55% {
+    transform: translateX(-8%);
+    opacity: 1;
+  }
+  75% {
+    transform: translateX(3%);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateX(-80%);
+    opacity: 0;
+  }
+}
+
+@keyframes glitch-flicker-intense {
+  0%, 100% {
+    opacity: 0;
+  }
+  10%, 26%, 44%, 68%, 88% {
+    opacity: 0.85;
+  }
+  18%, 36%, 56%, 78%, 94% {
+    opacity: 0.2;
+  }
+}
+
+.glitch-laser-1 {
+  animation: glitch-slice-1 280ms cubic-bezier(0.12, 0.9, 0.24, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.glitch-laser-2 {
+  animation: glitch-slice-2 280ms cubic-bezier(0.12, 0.9, 0.24, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.glitch-scanlines {
+  animation: glitch-flicker-intense 300ms steps(4, start) forwards;
+  will-change: opacity;
+}
+
+/* Red Square Elements */
+.red-square {
+  background-color: var(--color-red);
+}
+
+/* Timeline Components */
+.timeline {
+  z-index: var(--z-index-timeline);
+  position: absolute;
+  bottom: calc(40 * var(--vr));
+  right: calc(60 * var(--vr));
+  width: calc(100% - 160 * var(--vr));
+  height: 36px;
+}
+
+@media (max-width: 768px) {
+  .timeline {
+    display: none;
+  }
+}
+
+.timeline .indicator {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  position: absolute;
+  left: 50%;
+  top: -30px;
+  transform: translateX(-50%);
+  opacity: 0.6;
+}
+
+.line__container {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.events {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+}
+
+.event-block {
+  position: absolute;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(255, 0, 0, 0.4);
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+}
+
+.event-block:hover,
+.event-block.active {
+  background-color: rgba(255, 0, 0, 0.95);
+  animation: blink-red 0.35s 1;
+}
+
+.event-label {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #fff;
+  position: absolute;
+  bottom: 8px;
+}
+
+.date__container {
+  position: absolute;
+  transform: translateX(-50%);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--color-red);
+}
+
+.date__line {
+  width: 2px;
+  height: 24px;
+  background-color: var(--color-red);
+}
+
+/* Animations */
+@keyframes blink-red {
+  0%, 100% {
+    background-color: rgba(255, 0, 0, 0.6);
+  }
+  17%, 50%, 83% {
+    background-color: #ff0000;
+  }
+}
+
+@keyframes blink-opacity {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Projects Directory Styling */
+.projects-container {
+  height: calc(100vh - 120px);
+  height: calc(100dvh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.projects-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* About Me Section Scroll Container */
+.about-scroll-container {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.about-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.project-title-link {
+  display: block;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: calc(10 * var(--vr)) 0;
+  text-decoration: none;
+  color: #fff;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.project-title-text {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(3.5rem, 8.5vw, 11rem);
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  transition: color 0.2s ease, transform 0.2s ease;
+  display: inline-block;
+}
+
+.project-title-link:hover .project-title-text {
+  color: #ff0000;
+  transform: translateX(10px);
+}
+
+/* Floating Preview Image */
+.preview-card {
+  position: fixed;
+  pointer-events: none;
+  z-index: 30;
+  width: 320px;
+  height: 240px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #000;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  transition: opacity 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .preview-card {
+    display: none;
+  }
+}
+
+/* 15 Column Overlay Grid */
+.layout__overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: var(--z-index-overlay);
+  display: flex;
+  pointer-events: none;
+}
+
+.layout__overlay .column {
+  flex: 1;
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.layout__overlay .column:last-child {
+  border-right: none;
+}
+
+/* Respect the OS-level motion preference: kill the strobe/glitch flashes,
+   which are the most photosensitive-hostile part of the transition, and
+   collapse every decorative animation to an instant state change. */
+@media (prefers-reduced-motion: reduce) {
+  .transition-flash-white,
+  .transition-flash-red,
+  .glitch-laser-1,
+  .glitch-laser-2,
+  .glitch-scanlines {
+    animation: none !important;
+    opacity: 0 !important;
+    transform: none !important;
+  }
+
+  .animate-eq-1,
+  .animate-eq-2,
+  .animate-eq-3,
+  .animate-eq-4,
+  .layout__menu a.active {
+    animation: none !important;
+  }
+
+  /* Staggered reveals collapse straight to their final state. */
+  .reveal-rise {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .section,
+  .section-exit {
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
+}
+
+/* Sound Equalizer Visualizer Animations.
+   These animate transform: scaleY() rather than height. Animating height forces a
+   style + layout pass on every frame of a never-ending loop, whereas scaleY stays
+   on the compositor. Every bar therefore needs the SAME 14px base height (h-3.5 in
+   the markup) with origin at the bottom; the scale factors below reproduce the
+   original pixel heights exactly (4/14, 14/14, 5/14, 8/14, 16/14, 12/14). */
+@keyframes eq-bounce-1 {
+  0%, 100% { transform: scaleY(0.2857); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes eq-bounce-2 {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.3571); }
+}
+
+@keyframes eq-bounce-3 {
+  0%, 100% { transform: scaleY(0.5714); }
+  50% { transform: scaleY(1.1429); }
+}
+
+@keyframes eq-bounce-4 {
+  0%, 100% { transform: scaleY(0.8571); }
+  50% { transform: scaleY(0.2857); }
+}
+
+.animate-eq-1 {
+  animation: eq-bounce-1 0.75s ease-in-out infinite;
+  transform-origin: bottom;
+  will-change: transform;
+}
+
+.animate-eq-2 {
+  animation: eq-bounce-2 0.6s ease-in-out infinite 0.15s;
+  transform-origin: bottom;
+  will-change: transform;
+}
+
+.animate-eq-3 {
+  animation: eq-bounce-3 0.85s ease-in-out infinite 0.05s;
+  transform-origin: bottom;
+  will-change: transform;
+}
+
+.animate-eq-4 {
+  animation: eq-bounce-4 0.65s ease-in-out infinite 0.25s;
+  transform-origin: bottom;
+  will-change: transform;
+}
+
+/* Staggered content reveal. Applied to the children of a section so they rise
+   into place after the flash clears, instead of the whole page arriving as one
+   flat block. `forwards` is enough (not `both`) because the base state is already
+   the invisible one, which also keeps the delay period clean. */
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal-rise {
+  opacity: 0;
+}
+
+.reveal-rise.is-revealed {
+  animation: reveal-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes film-hint-fade {
+  0%, 100% { opacity: 0.5; transform: translateX(-50%) translateY(0); }
+  50% { opacity: 0.9; transform: translateX(-50%) translateY(6px); }
+}
+
+
+
+

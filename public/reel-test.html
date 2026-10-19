@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D film reel scroll</title>
+<style>
+  * { margin: 0; }
+  html, body { background: #2c4157; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #scroller { height: 700vh; }          /* scroll length = how long the reel takes to roll through */
+  #hint { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); color: rgba(255,255,255,.8);
+          font: 12px ui-monospace, Menlo, monospace; letter-spacing: .3em; pointer-events: none; transition: opacity .4s; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="scroller"></div>
+<div id="hint">SCROLL</div>
+
+<script>
+/* ============================================================
+   1. YOUR CLIPS: one per frame. Put files next to this HTML.
+      Serve the folder over http (e.g. `npx serve`), because browsers
+      block video textures from file:// pages.
+      Entries without `src` show a coloured placeholder.
+   ============================================================ */
+const CLIPS = [
+  { src: "/clips/gt_final.mp4" },
+  { src: "/clips/butterfly.mp4" },
+  { src: "/portfolio.mp4" },
+  { src: "/clips/south_melody.mp4" },
+  { src: "/clips/color_grade.mp4" },
+  { src: "/clips/mor.mp4" },
+  { src: "/clips/ready_or_not.mp4" },
+];
+
+/* ============================================================
+   2. SETTINGS
+   ============================================================ */
+const CAM_DIST  = 6.3;                         // camera distance; the strip's width is 1 unit
+const CAM_TARGET = [0.35, -0.05, -0.6];
+const PAD = 5;                                  // blank leader frames before/after the clips (like real film)
+const ROUTE = [                                 // the reel's 3D route (x right, y up, z toward camera)
+  [-8,-4.4,1.4],[-4,-2.7,0.9],[-1.4,-1.3,0.5],[0.6,-0.55,0.1],[1.9,0.3,-0.9],
+  [2.3,1.3,-2.6],[1.2,2.0,-4.6],[-1.2,2.4,-6.6],[-3.6,3.0,-8.8],[-6.5,4.0,-11],
+];
+const SMOOTH = 0.08;                            // scroll easing (1 = none)
+const BLUR   = 1.0;                             // depth-of-field strength (0 = off)
+
+/* ============================================================
+   3. MATH
+   ============================================================ */
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const mul=(a,k)=>[a[0]*k,a[1]*k,a[2]*k], dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(...a)||1;return[a[0]/l,a[1]/l,a[2]/l]};
+const lerp3=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const clamp=(x,a,b)=>Math.min(Math.max(x,a),b);
+const persp=(f,a,n,fa)=>{const t=1/Math.tan(f/2),nf=1/(n-fa);return[t/a,0,0,0,0,t,0,0,0,0,(fa+n)*nf,-1,0,0,2*fa*n*nf,0]};
+const look=(e,c,u)=>{const z=norm(sub(e,c)),x=norm(cross(u,z)),y=cross(z,x);
+  return[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,e),-dot(y,e),-dot(z,e),1]};
+const mmul=(a,b)=>{const o=new Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;
+  for(let k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s}return o};
+
+/* ============================================================
+   4. THE ROUTE: smooth curve resampled by arc length, with a
+      twist-free frame (parallel transport) + a gentle twist
+   ============================================================ */
+const DS = 0.02;
+let P = [], T = [], Bv = [], PLEN = 0;
+(function buildRoute() {
+  const C = [ROUTE[0], ...ROUTE, ROUTE[ROUTE.length - 1]], dense = [];
+  for (let i = 1; i < C.length - 2; i++)
+    for (let k = 0; k < 40; k++) {
+      const t = k / 40, o = [0, 0, 0];
+      for (let c = 0; c < 3; c++) {
+        const a = C[i-1][c], b = C[i][c], d = C[i+1][c], e = C[i+2][c];
+        o[c] = .5 * (2*b + (-a+d)*t + (2*a-5*b+4*d-e)*t*t + (-a+3*b-3*d+e)*t*t*t);
+      }
+      dense.push(o);
+    }
+  dense.push(ROUTE[ROUTE.length - 1]);
+  const cum = [0];
+  for (let i = 1; i < dense.length; i++) cum.push(cum[i-1] + Math.hypot(...sub(dense[i], dense[i-1])));
+  PLEN = cum[cum.length - 1];
+  const M = Math.floor(PLEN / DS);
+  for (let k = 0, j = 0; k <= M; k++) {                 // uniform arc-length samples
+    const s = k * DS; while (j < cum.length - 2 && cum[j+1] < s) j++;
+    P.push(lerp3(dense[j], dense[j+1], (s - cum[j]) / ((cum[j+1] - cum[j]) || 1)));
+  }
+  for (let k = 0; k < P.length; k++) T.push(norm(sub(P[Math.min(k+1,P.length-1)], P[Math.max(k-1,0)])));
+  let fs = 0; for (let k = 0; k < P.length; k++) if (P[k][0] >= 0) { fs = k * DS; break; }
+  let B = norm(cross([0, 0, 1], T[0]));                 // film faces the camera, width runs "up"
+  for (let k = 0; k < P.length; k++) {
+    B = norm(sub(B, mul(T[k], dot(B, T[k]))));          // parallel transport
+    const s = k * DS, th = 1.15 * Math.exp(-(((s - (fs + 3.6)) / 1.5) ** 2));   // a twist, like in the video
+    Bv.push(add(mul(B, Math.cos(th)), mul(cross(T[k], B), Math.sin(th))));
+  }
+})();
+function at(s) {
+  const f = clamp(s / DS, 0, P.length - 1.001), i = f | 0, t = f - i;
+  return { p: lerp3(P[i], P[i+1], t), b: norm(lerp3(Bv[i], Bv[i+1], t)), t: norm(lerp3(T[i], T[i+1], t)) };
+}
+let FOCUS_S = 0; for (let k = 0; k < P.length; k++) if (P[k][0] >= 0) { FOCUS_S = k * DS; break; }
+
+/* ============================================================
+   5. WEBGL SETUP
+   ============================================================ */
+const cv = document.getElementById("gl");
+const gl = cv.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) { document.body.insertAdjacentHTML("afterbegin", "<p style='color:#fff;padding:20px'>WebGL2 is required.</p>"); throw 0; }
+
+function program(vs, fs) {
+  const mk = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o);
+    if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p;
+}
+const FS_TRI = `#version 300 es
+void main(){ vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2)); gl_Position=vec4(p*2.-1.,0.,1.); }`;
+
+/* --- backdrop: soft blue studio gradient with a warm glow --- */
+const pBG = program(FS_TRI, `#version 300 es
+precision highp float; uniform vec2 uRes; uniform vec2 uShift; out vec4 o;
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes + uShift; float asp=uRes.x/uRes.y;
+  vec2 q=(uv-vec2(.36,.30))*vec2(asp>1.?1.:1.,1.); q.x*=min(asp,1.4);
+  float d=length(q*vec2(1.0,1.25));
+  vec3 c=mix(vec3(.95,.96,.90),vec3(.66,.79,.86),smoothstep(0.,.32,d));
+  c=mix(c,vec3(.36,.50,.63),smoothstep(.25,.75,d)); c=mix(c,vec3(.16,.25,.36),smoothstep(.65,1.2,d));
+  o=vec4(c,1.); }`);
+
+/* --- the film strip --- */
+const pFilm = program(`#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aUV;
+uniform mat4 uVP; out vec3 vN; out vec3 vW; out vec3 vUV;
+void main(){ vN=aN; vW=aP; vUV=aUV; gl_Position=uVP*vec4(aP,1.); }`,
+`#version 300 es
+precision highp float;
+in vec3 vN; in vec3 vW; in vec3 vUV;
+uniform sampler2D uVid; uniform sampler2D uEdge; uniform vec3 uCam; uniform float uLen; uniform float uBlank; out vec4 o;
+const float PITCH=1.086;                         // frame length / film width (35mm: 38 / 35)
+float rbox(vec2 p, vec2 b, float r){ vec2 q=abs(p)-b+r; return length(max(q,0.))+min(max(q.x,q.y),0.)-r; }
+void main(){
+  float u=vUV.x, v=vUV.y, x=u*PITCH, y=v;
+  float aa=max(fwidth(x),fwidth(y))*1.2+1e-4;
+  vec3 N=normalize(vN); if(!gl_FrontFacing) N=-N;
+  vec3 V=normalize(uCam-vW); vec3 L=normalize(vec3(.3,.6,.75));
+  float fr=pow(1.-abs(dot(N,V)),2.2), ndl=abs(dot(N,L));
+
+  // sprocket holes: 8 per frame
+  float hx=(fract(u*8.)-.5)*(PITCH/8.), hy=min(y,1.-y)-.075;
+  float hole=smoothstep(aa,-aa,rbox(vec2(hx,hy),vec2(.036,.040),.012));
+
+  // picture window with thin black frame lines between frames
+  float win=smoothstep(-aa,aa,min(min(x-.022,PITCH-x-.022),min(y-.17,.83-y)));
+  vec2 wuv=vec2((x-.022)/(PITCH-.044),(y-.17)/.66);
+  vec3 pic=texture(uVid,clamp(wuv,0.,1.)).rgb;
+
+  // base: dark film edge with a soft sheen
+  vec3 col=vec3(.035,.04,.05)*(.7+1.5*ndl*ndl)+vec3(.10,.13,.16)*fr*.5;
+  // amber edge print on both borders
+  float vb=v<.5?v:1.-v, uu=v<.5?u:1.-u;
+  if(vb>.118 && vb<.165){ vec4 t=texture(uEdge,vec2(uu,(vb-.118)/.047)); col=mix(col,vec3(.93,.66,.22),t.a); }
+  col=mix(col,pic*(.92+.1*ndl)+vec3(.8,.9,1.)*fr*(.18+.5*uBlank),win);
+
+  float a=mix(.97,mix(.92,.09,uBlank),win)+fr*(.05+.4*uBlank*win);
+  a*=1.-hole;
+  a*=smoothstep(0.,1.5,vUV.z)*smoothstep(0.,1.5,uLen-vUV.z);   // fade at the two ends of the route
+  if(a<.02) discard;
+  o=vec4(col,a); }`);
+
+/* --- depth of field + grain + vignette --- */
+const pDOF = program(FS_TRI, `#version 300 es
+precision highp float;
+uniform sampler2D uC; uniform sampler2D uD; uniform vec2 uRes; uniform float uNear,uFar,uFocus,uA,uMax,uBg,uTime;
+out vec4 o;
+float lin(float z){ float n=2.*z-1.; return 2.*uNear*uFar/(uFar+uNear-n*(uFar-uNear)); }
+float coc(vec2 uv){ float z=texture(uD,uv).r; if(z>.9999) return uBg; return min(uMax,uA*abs(1./uFocus-1./lin(z))); }
+float ign(vec2 p){ return fract(52.9829189*fract(dot(p,vec2(.06711056,.00583715)))); }
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes; float c0=coc(uv);
+  vec3 acc=texture(uC,uv).rgb; float ws=1.;
+  float rot=ign(gl_FragCoord.xy)*6.2831;
+  if(c0>.6){
+    for(int i=0;i<48;i++){
+      float r=sqrt((float(i)+.5)/48.)*c0, a=float(i)*2.39996+rot;
+      vec2 off=vec2(cos(a),sin(a))*r; vec2 s=uv+off/uRes;
+      float w=coc(s)+.5>=r?1.:0.;                       // far/blurry samples only: sharp pixels don't bleed
+      acc+=texture(uC,s).rgb*w; ws+=w;
+    }
+  }
+  vec3 c=acc/ws;
+  vec2 q=uv-.5; c*=1.-.35*smoothstep(.3,.95,length(q*vec2(1.,1.1)));
+  c+=(ign(gl_FragCoord.xy+uTime)-.5)*.025;
+  o=vec4(c,1.); }`);
+
+/* ---------- textures ---------- */
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+function newTex(mips) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mips ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+  return t;
+}
+function canvasTex(c, mips) {
+  const t = newTex(mips); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  if (mips) gl.generateMipmap(gl.TEXTURE_2D); return t;
+}
+function edgeCanvas(n) {                 // amber edge print: frame number + arrow
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 44;
+  const g = c.getContext("2d"); g.fillStyle = "#e8a838"; g.font = "bold 34px ui-monospace, Menlo, monospace"; g.textBaseline = "middle";
+  g.fillText(String(n), 90, 24); g.fillText("\u25B7 " + n + "A", 560, 24); return c;
+}
+function placeholder(i) {
+  const c = document.createElement("canvas"); c.width = 512; c.height = 340; const g = c.getContext("2d");
+  const h = (i * 47 + 200) % 360, gr = g.createLinearGradient(0, 0, 512, 340);
+  gr.addColorStop(0, `hsl(${h} 55% 52%)`); gr.addColorStop(1, `hsl(${h + 40} 60% 28%)`);
+  g.fillStyle = gr; g.fillRect(0, 0, 512, 340);
+  g.fillStyle = "rgba(255,255,255,.88)"; g.font = "bold 46px ui-monospace, Menlo, monospace";
+  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("CLIP " + String(i + 1).padStart(2, "0"), 256, 170); return c;
+}
+
+/* ---------- one mesh per frame ---------- */
+const N = CLIPS.length, NF = N + 2 * PAD, SEG = 24, PITCH = 1.086;
+const idx = []; for (let r = 0; r < SEG; r++) { const a = r*2; idx.push(a, a+1, a+2, a+1, a+3, a+2); }
+const blankC = document.createElement("canvas"); blankC.width = blankC.height = 2;
+blankC.getContext("2d").fillStyle = "#cfe3ee"; blankC.getContext("2d").fillRect(0, 0, 2, 2);
+const blankTex = canvasTex(blankC, false);
+const frames = Array.from({ length: NF }, (_, i) => {
+  const j = i - PAD, real = j >= 0 && j < N, c = real ? CLIPS[j] : {};
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, (SEG+1)*2*9*4, gl.DYNAMIC_DRAW);
+  for (let a = 0; a < 3; a++) { gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 3, gl.FLOAT, false, 36, a*12); }
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+  const f = { vao, vbo, data: new Float32Array((SEG+1)*2*9), edge: canvasTex(edgeCanvas(((j % 36) + 36) % 36 + 1), true), real,
+              tex: real ? canvasTex(placeholder(j), false) : blankTex, video: null, playing: false, dirty: false, s: 0, pos: [0,0,0] };
+  if (c.src) {
+    const v = document.createElement("video"); v.src = c.src; v.muted = true; v.loop = true; v.playsInline = true;
+    v.preload = "auto"; v.crossOrigin = "anonymous";
+    v.addEventListener("loadeddata", () => { f.video = v; f.dirty = true; });
+    v.addEventListener("error", () => { f.video = null; });
+    v.load();
+  }
+  return f;
+});
+function meshFor(f, sc) {                // lay the frame along the route centred on arc position sc
+  const d = f.data; let o = 0;
+  for (let r = 0; r <= SEG; r++) {
+    const s = sc + (r / SEG - .5) * PITCH, q = at(s), n = norm(cross(q.t, q.b));
+    for (let side = 0; side < 2; side++) {
+      const p = add(q.p, mul(q.b, side ? .5 : -.5));
+      d[o++]=p[0]; d[o++]=p[1]; d[o++]=p[2]; d[o++]=n[0]; d[o++]=n[1]; d[o++]=n[2];
+      d[o++]=r / SEG; d[o++]=side; d[o++]=s;
+    }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, f.vbo); gl.bufferSubData(gl.ARRAY_BUFFER, 0, d);
+  f.pos = at(sc).p;
+}
+function setPlay(f, on) {
+  if (!f.video || f.playing === on) return; f.playing = on;
+  if (on) f.video.play().catch(() => {}); else f.video.pause();
+}
+
+/* ---------- render targets: MSAA scene -> resolved colour + depth textures ---------- */
+let msFBO, msC, msD, rsFBO, rsC, rsD, W = 0, H = 0;
+function targets() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = Math.max(2, Math.round(cv.clientWidth * dpr)); H = Math.max(2, Math.round(cv.clientHeight * dpr));
+  cv.width = W; cv.height = H;
+  [msFBO, rsFBO].forEach(f => f && gl.deleteFramebuffer(f)); [msC, msD].forEach(r => r && gl.deleteRenderbuffer(r));
+  [rsC, rsD].forEach(t => t && gl.deleteTexture(t));
+  msFBO = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, msFBO);
+  msC = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, msC);
+  gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RGBA8, W, H);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, msC);
+  msD = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, msD);
+  gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.DEPTH_COMPONENT24, W, H);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, msD);
+  rsFBO = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, rsFBO);
+  rsC = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, rsC); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, W, H);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rsC, 0);
+  rsD = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, rsD); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, W, H);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rsD, 0);
+}
+
+/* ---------- uniforms ---------- */
+const uBG = { res: gl.getUniformLocation(pBG, "uRes"), shift: gl.getUniformLocation(pBG, "uShift") };
+const uF = { vp: gl.getUniformLocation(pFilm, "uVP"), cam: gl.getUniformLocation(pFilm, "uCam"), len: gl.getUniformLocation(pFilm, "uLen"),
+             vid: gl.getUniformLocation(pFilm, "uVid"), edge: gl.getUniformLocation(pFilm, "uEdge"), blank: gl.getUniformLocation(pFilm, "uBlank") };
+const uD = ["uC","uD","uRes","uNear","uFar","uFocus","uA","uMax","uBg","uTime"].reduce((m, n) => (m[n] = gl.getUniformLocation(pDOF, n), m), {});
+const emptyVAO = gl.createVertexArray();
+
+/* ============================================================
+   6. FRAME LOOP
+   ============================================================ */
+const scroller = document.getElementById("scroller"), hint = document.getElementById("hint");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let target = 0, cur = 0, mx = 0, my = 0, smx = 0, smy = 0;
+const readScroll = () => {
+  const max = scroller.offsetHeight - innerHeight; target = max > 0 ? clamp(scrollY / max, 0, 1) : 0;
+  hint.style.opacity = scrollY > 40 ? 0 : 1;
+};
+addEventListener("scroll", readScroll, { passive: true });
+addEventListener("pointermove", e => { mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5; });
+addEventListener("resize", targets);
+
+const NEAR = .1, FAR = 80, FOV = 35 * Math.PI / 180;
+function frame(now) {
+  cur += (target - cur) * (reduce ? 1 : SMOOTH); if (Math.abs(target - cur) < 1e-5) cur = target;
+  smx += (mx - smx) * .05; smy += (my - smy) * .05;
+
+  // camera orbits a little with scroll and pointer: that parallax is what sells the 3D
+  const yaw = (cur - .5) * .45 + smx * .22, pitch = -smy * .12 + .02;
+  const cp = [CAM_TARGET[0] + Math.sin(yaw) * Math.cos(pitch) * CAM_DIST,
+              CAM_TARGET[1] + Math.sin(pitch) * CAM_DIST,
+              CAM_TARGET[2] + Math.cos(yaw) * Math.cos(pitch) * CAM_DIST];
+  const fwd = norm(sub(CAM_TARGET, cp)), focusDist = dot(sub(at(FOCUS_S).p, cp), fwd);
+  const vp = mmul(persp(FOV, W / H, NEAR, FAR), look(cp, CAM_TARGET, [0, 1, 0]));
+
+  // place the frames: frame i sits (u - i) frames past the focus point
+  const u = cur * (N - 1);
+  const order = [];
+  frames.forEach((f, i) => {
+    f.s = FOCUS_S + (u - (i - PAD)) * PITCH;
+    const vis = f.s + PITCH / 2 > 0 && f.s - PITCH / 2 < PLEN;
+    f.vis = vis; if (!vis) { setPlay(f, false); return; }
+    meshFor(f, f.s);
+    setPlay(f, f.real && Math.abs(f.s - FOCUS_S) < PITCH * 2.2);
+    if (f.video && (f.playing || f.dirty) && f.video.readyState >= 2) {
+      gl.bindTexture(gl.TEXTURE_2D, f.tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, f.video); f.dirty = false;
+    }
+    f.dist = Math.hypot(...sub(f.pos, cp)); order.push(f);
+  });
+  order.sort((a, b) => b.dist - a.dist);                 // far to near, for correct blending
+
+  // pass 1: backdrop + strip into the MSAA target
+  gl.bindFramebuffer(gl.FRAMEBUFFER, msFBO); gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 1); gl.clearDepth(1); gl.depthMask(true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.useProgram(pBG);
+  gl.uniform2f(uBG.res, W, H); gl.uniform2f(uBG.shift, -yaw * .12, 0);
+  gl.bindVertexArray(emptyVAO); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(pFilm); gl.uniformMatrix4fv(uF.vp, false, vp); gl.uniform3fv(uF.cam, cp); gl.uniform1f(uF.len, PLEN);
+  gl.uniform1i(uF.vid, 0); gl.uniform1i(uF.edge, 1);
+  for (const f of order) {
+    gl.uniform1f(uF.blank, f.real ? 0 : 1);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, f.tex);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, f.edge);
+    gl.bindVertexArray(f.vao); gl.drawElements(gl.TRIANGLES, SEG * 6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  // resolve MSAA -> textures (colour + depth)
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFBO); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, rsFBO);
+  gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+
+  // pass 2: depth of field to the screen
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.useProgram(pDOF);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rsC);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, rsD);
+  const k = H / 1000 * BLUR;
+  gl.uniform1i(uD.uC, 0); gl.uniform1i(uD.uD, 1); gl.uniform2f(uD.uRes, W, H);
+  gl.uniform1f(uD.uNear, NEAR); gl.uniform1f(uD.uFar, FAR); gl.uniform1f(uD.uFocus, focusDist);
+  gl.uniform1f(uD.uA, 190 * k); gl.uniform1f(uD.uMax, 18 * k); gl.uniform1f(uD.uBg, 9 * k);
+  gl.uniform1f(uD.uTime, (now * .06) % 100);
+  gl.bindVertexArray(emptyVAO); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+targets(); readScroll(); cur = target;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
+

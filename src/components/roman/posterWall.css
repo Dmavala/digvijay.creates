@@ -1,0 +1,424 @@
+:root {
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .28  0 0 0 0 .15  0 0 0 .5 -.12'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --grain-light: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .4 -.1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.poster-wall-root {
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  inset: 0 !important;
+  background: #d8d4c6;
+  overflow: hidden;
+}
+
+/* ================= THE WALL: FULLSCREEN SCALED PLASTER WITH REALISTIC LIGHTING ================= */
+.poster-wall-root .wall {
+  position: relative;
+  isolation: isolate;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #d2cbbd;
+  background-image: url('/assets/stucco_wall.jpg');
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  --mx: 50%;
+  --my: 45%;
+}
+
+/* Base stucco micro-lighting filter */
+.poster-wall-root .wall .tex {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  filter: url(#plaster);
+  mix-blend-mode: overlay;
+  opacity: 0.32;
+}
+
+/* 1. Dramatic Window Gobo & Diagonal Golden Sunlight Beams */
+.poster-wall-root .wall .sun-gobo {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* High-intensity golden sunbeam wash */
+    radial-gradient(ellipse 95% 75% at 24% 20%, rgba(255, 238, 195, 0.78) 0%, rgba(255, 218, 140, 0.42) 42%, transparent 75%),
+    /* Secondary warm bounce pool on opposite wall */
+    radial-gradient(ellipse 75% 65% at 78% 70%, rgba(255, 232, 175, 0.28) 0%, transparent 68%),
+    /* Diagonal architectural sunlight cut */
+    linear-gradient(132deg,
+      transparent 0%,
+      rgba(255, 246, 215, 0.52) 15%,
+      rgba(255, 236, 175, 0.62) 28%,
+      rgba(242, 205, 135, 0.38) 45%,
+      transparent 68%
+    ),
+    /* Crisp yet soft architectural window mullion shadow bands (gobo slats) */
+    repeating-linear-gradient(132deg,
+      transparent 0px,
+      transparent 120px,
+      rgba(38, 25, 10, 0.22) 120px,
+      rgba(38, 25, 10, 0.22) 165px,
+      transparent 165px,
+      transparent 360px
+    );
+  mix-blend-mode: overlay;
+  opacity: 0.96;
+}
+
+/* 2. Gallery Ceiling Track Downlights / Eyeball Spotlights */
+.poster-wall-root .wall .gallery-spots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* Left Track Spotlight Cone over Far-Left Column */
+    radial-gradient(ellipse 36% 62% at 14% -4%, rgba(255, 252, 242, 0.95) 0%, rgba(255, 244, 215, 0.5) 35%, rgba(255, 236, 190, 0.18) 60%, transparent 80%),
+    /* Center Track Spotlight Cone over Center Sculpture & Vertical Posters */
+    radial-gradient(ellipse 48% 72% at 50% -6%, rgba(255, 254, 245, 1) 0%, rgba(255, 246, 222, 0.6) 38%, rgba(255, 238, 195, 0.22) 65%, transparent 85%),
+    /* Right Track Spotlight Cone over Far-Right Column & Plate */
+    radial-gradient(ellipse 36% 62% at 85% -4%, rgba(255, 252, 242, 0.95) 0%, rgba(255, 244, 215, 0.5) 35%, rgba(255, 236, 190, 0.18) 60%, transparent 80%);
+  mix-blend-mode: soft-light;
+  opacity: 0.95;
+}
+
+/* 3. Interactive Mouse Spotlight / Ambient Gallery Torch */
+.poster-wall-root .wall .mouse-light {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* Inner bright specular core */
+    radial-gradient(circle 160px at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 245, 0.38) 0%, transparent 100%),
+    /* Ambient warm inspection pool */
+    radial-gradient(circle 520px at var(--mx, 50%) var(--my, 50%), rgba(255, 245, 215, 0.25) 0%, rgba(255, 232, 185, 0.1) 50%, transparent 80%);
+  mix-blend-mode: soft-light;
+  transition: opacity 0.3s ease;
+}
+
+/* 4. Deep Room Perimeter Vignette & Corner Ambient Occlusion */
+.poster-wall-root .wall .room-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* Room spherical depth falloff (corners drop off) */
+    radial-gradient(ellipse 94% 84% at 50% 48%, transparent 42%, rgba(55, 38, 18, 0.35) 78%, rgba(20, 14, 6, 0.65) 100%),
+    /* Ceiling junction contact shadow */
+    linear-gradient(to bottom, rgba(18, 12, 6, 0.42) 0%, rgba(18, 12, 6, 0.15) 8%, transparent 22%),
+    /* Floor contact shadow & baseboard occlusion */
+    linear-gradient(to top, rgba(16, 10, 5, 0.48) 0%, rgba(16, 10, 5, 0.18) 10%, transparent 26%);
+  mix-blend-mode: multiply;
+  opacity: 0.95;
+}
+
+/* blur + dim everything behind whatever is hovered */
+.poster-wall-root .wall::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  background: rgba(30, 22, 12, 0.38);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: opacity 0.45s ease, background 0.45s ease;
+}
+
+.poster-wall-root .wall:has(.item:is(:hover, :focus-visible, .on))::after {
+  opacity: 1;
+}
+
+.poster-wall-root .wall:has(.gun:is(:hover, :focus-visible, .on))::after {
+  background: rgba(5, 15, 40, 0.65);
+}
+
+/* stage expands across the entire wall */
+.poster-wall-root .stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 1720px;
+  max-height: 980px;
+}
+
+.poster-wall-root .stage::before {
+  /* a few scuffs and a pin hole on the wall */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 3.8% 21.5%, rgba(70,50,25,.65) 0 1.4px, transparent 2.6px),
+    radial-gradient(circle at 12% 9%, rgba(90,70,40,.3) 0 1px, transparent 2px),
+    radial-gradient(ellipse 14px 3px at 91% 83%, rgba(110,90,55,.16), transparent),
+    radial-gradient(ellipse 22px 4px at 9% 88%, rgba(110,90,55,.12), transparent);
+}
+
+.poster-wall-root .item {
+  position: absolute;
+  z-index: 1;
+  outline: none;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  width: calc(var(--w) * 1%);
+  height: calc(var(--h) * 1%);
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.55s ease;
+}
+
+/* ================= 3D PHOTOREALISTIC POSTER SLOTS ================= */
+.poster-wall-root .slot {
+  background: linear-gradient(138deg, #ffffff 0%, #faf8f3 45%, #f2efe4 80%, #ebe5d7 100%);
+  cursor: zoom-in;
+  border-radius: 2px;
+  /* Multi-stage physical contact + directional cast shadow down-right */
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.98),
+    inset -1.5px -1.5px 0 rgba(100, 80, 45, 0.3),
+    0 -1px 1px rgba(255, 255, 255, 0.5),
+    1px 2px 3px rgba(35, 22, 8, 0.42),
+    5px 11px 18px rgba(35, 22, 8, 0.26),
+    14px 28px 44px rgba(35, 22, 8, 0.18),
+    26px 52px 75px rgba(25, 15, 5, 0.1);
+}
+
+.poster-wall-root .slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.poster-wall-root .slot img:not([src]),
+.poster-wall-root .slot img[src=""] {
+  display: none;
+}
+
+.poster-wall-root .slot::after {
+  /* Paper grain + realistic sunlight specular sheen */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    var(--grain),
+    linear-gradient(132deg, rgba(255, 255, 255, 0.55) 0%, transparent 45%, rgba(65, 45, 15, 0.1) 100%);
+}
+
+.poster-wall-root .slot.sticker {
+  /* Glossy vinyl sticker */
+  border-radius: 9px;
+  background: linear-gradient(135deg, #fffdf8 0%, #f4eee2 60%, #ece5d6 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.85),
+    1px 2px 3px rgba(45, 30, 10, 0.35),
+    4px 10px 18px rgba(45, 30, 10, 0.22),
+    10px 22px 36px rgba(45, 30, 10, 0.12);
+}
+
+.poster-wall-root .slot.sticker::after {
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.2) 65%, rgba(0, 0, 0, 0.06));
+}
+
+.poster-wall-root .slot.plate {
+  /* Embossed metal licence plate */
+  border-radius: 10px;
+  background: linear-gradient(135deg, #eeebe2 0%, #d5d1c6 55%, #bcb8ac 100%);
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 255, 255, 0.6),
+    inset 0 0 0 4.5px rgba(0, 0, 0, 0.42),
+    inset 0 0 0 7.5px rgba(255, 255, 255, 0.24),
+    1px 2px 4px rgba(35, 25, 8, 0.5),
+    6px 14px 24px rgba(35, 25, 8, 0.3),
+    16px 32px 50px rgba(35, 25, 8, 0.16);
+}
+
+.poster-wall-root .slot.plate::after {
+  background:
+    radial-gradient(circle at 22% 6%, #3a3a38 0 2.8px, #b0ada3 3.2px 4.8px, transparent 5.2px),
+    radial-gradient(circle at 78% 6%, #3a3a38 0 2.8px, #b0ada3 3.2px 4.8px, transparent 5.2px),
+    linear-gradient(125deg, rgba(255, 255, 255, 0.65), transparent 38%, rgba(0, 0, 0, 0.15));
+}
+
+.poster-wall-root .slot:is(:hover, :focus-visible, .on) {
+  z-index: 10;
+  transform: scale(1.32);
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.98),
+    0 4px 8px rgba(20, 14, 4, 0.45),
+    0 35px 70px rgba(20, 14, 4, 0.55),
+    0 60px 100px rgba(20, 14, 4, 0.25);
+}
+
+/* ================= THE CAN SCULPTURE ================= */
+.poster-wall-root .gun {
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  cursor: crosshair;
+  transform: scale(1.35);
+  /* Directional shadow cast onto the plaster wall */
+  filter:
+    drop-shadow(2px 3px 2px rgba(25, 14, 4, 0.55))
+    drop-shadow(6px 14px 18px rgba(30, 18, 6, 0.4))
+    drop-shadow(16px 36px 45px rgba(30, 18, 6, 0.22));
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.55s ease;
+}
+
+.poster-wall-root .gun svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  display: block;
+}
+
+.poster-wall-root .gun .hit,
+.poster-wall-root .gun .part {
+  pointer-events: all;
+}
+
+.poster-wall-root .gun:is(:hover, :focus-visible, .on) {
+  z-index: 10;
+  pointer-events: auto;
+  transform: scale(var(--zoom, 1.14)) rotate(var(--rot, 0deg));
+  filter: none;
+}
+
+/* the blueprint paper that grows behind the cans */
+.poster-wall-root .gun::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(.94);
+  border: 1px solid rgba(220, 236, 255, .6);
+  background:
+    var(--grain-light),
+    linear-gradient(rgba(220,236,255,.15) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(90deg, rgba(220,236,255,.15) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(rgba(220,236,255,.06) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, rgba(220,236,255,.06) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(100deg, transparent 49.6%, rgba(0,0,0,.16) 50%, rgba(255,255,255,.07) 50.4%, transparent 51%),
+    radial-gradient(ellipse at 50% 42%, #1a5bc4, #0b3380 70%, #082663);
+  box-shadow: 0 30px 70px rgba(0, 10, 40, .6);
+  transition: opacity .5s ease, transform .6s cubic-bezier(.2, .8, .2, 1);
+}
+
+.poster-wall-root .gun:is(:hover, :focus-visible, .on)::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.poster-wall-root .part {
+  transition: transform .75s cubic-bezier(.2, .8, .2, 1);
+}
+
+.poster-wall-root .gun:is(:hover, :focus-visible, .on) .part {
+  transform: translate(var(--dx), var(--dy));
+}
+
+.poster-wall-root .real {
+  filter: drop-shadow(1px 1.5px 1px rgba(40,25,5,.45)) drop-shadow(5px 9px 6px rgba(50,35,10,.38));
+  transition: opacity .45s ease;
+}
+
+.poster-wall-root .bp,
+.poster-wall-root .callouts,
+.poster-wall-root .sheet {
+  opacity: 0;
+  transition: opacity .45s ease;
+}
+
+.poster-wall-root .gun:is(:hover, :focus-visible, .on) .real {
+  opacity: 0;
+}
+
+.poster-wall-root .gun:is(:hover, :focus-visible, .on) .bp {
+  opacity: 1;
+}
+
+.poster-wall-root .gun:is(:hover, :focus-visible, .on) .callouts,
+.poster-wall-root .gun:is(:hover, :focus-visible, .on) .sheet {
+  opacity: 1;
+  transition-delay: .4s;
+}
+
+.poster-wall-root .print {
+  fill: #d3121c;
+  font: italic 800 27px Georgia, "Times New Roman", serif;
+  text-anchor: middle;
+}
+
+.poster-wall-root .callouts text,
+.poster-wall-root .sheet text {
+  fill: #dcecff;
+  font: 6.5px/1 "Share Tech Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+.poster-wall-root .callouts text {
+  font-size: 8px;
+}
+
+.poster-wall-root .sheet .big {
+  font-size: 9px;
+  letter-spacing: .04em;
+}
+
+.poster-wall-root .sheet .mid {
+  font-size: 7.5px;
+}
+
+.poster-wall-root .sheet .sm {
+  font-size: 5.5px;
+  opacity: .85;
+}
+
+.poster-wall-root .callouts path,
+.poster-wall-root .callouts circle,
+.poster-wall-root .sheet path,
+.poster-wall-root .sheet rect,
+.poster-wall-root .sheet circle {
+  fill: none;
+  stroke: #dcecff;
+  stroke-width: .6;
+}
+
+.poster-wall-root .sheet .thick {
+  stroke-width: 1.2;
+}
+
+.poster-wall-root .sheet .dim {
+  marker-start: url(#arr);
+  marker-end: url(#arr);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poster-wall-root .item,
+  .poster-wall-root .part,
+  .poster-wall-root .real,
+  .poster-wall-root .bp,
+  .poster-wall-root .callouts,
+  .poster-wall-root .sheet,
+  .poster-wall-root .gun::before,
+  .poster-wall-root .wall::after {
+    transition-duration: .01s;
+    transition-delay: 0s;
+  }
+}
