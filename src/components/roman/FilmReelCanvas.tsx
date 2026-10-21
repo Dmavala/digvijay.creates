@@ -1277,14 +1277,15 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         <p className="mobileMessage block md:hidden text-xs text-white/50 mb-2 font-bold tracking-wider uppercase text-right">
           {isZoomed ? 'Scroll to zoom out' : 'Click clip to view work · Scroll to spin reel'}
         </p>
-        <div className="text text-right pointer-events-auto">
+        <header className="text text-right pointer-events-auto">
           <p className="job-title text-[#ff0000] tracking-wider font-bold mb-1">
-            CREATIVE EDITOR
+            VIDEO EDITOR
           </p>
           <h1 className="name-title text-[#ff0000] tracking-tight font-normal">
             DIGVIJAY.CREATES
+            <span className="sr-only"> — Digvijay Rishikesh Kohinkar, Video Editor Portfolio</span>
           </h1>
-        </div>
+        </header>
       </section>
     </div>
   );

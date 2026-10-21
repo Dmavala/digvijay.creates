@@ -181,7 +181,7 @@ export const TIMELINE_STEPS: TimelineStep[] = [
   },
 ];
 
-export const CONTACT_EMAIL = 'digvijay.creates@gmail.com';
+export const CONTACT_EMAIL = 'dkohinkar0003s@gmail.com';
 
 export interface SocialLink {
   /** Short label shown in the monumental contact list. */
@@ -198,7 +198,13 @@ export const SOCIAL_LINKS: SocialLink[] = [
     label: 'MAIL',
     handle: CONTACT_EMAIL,
     url: `mailto:${CONTACT_EMAIL}`,
-    description: 'Email Digvijay',
+    description: 'Email Digvijay Rishikesh Kohinkar',
+  },
+  {
+    label: 'GHUB',
+    handle: 'github.com/Dmavala',
+    url: 'https://github.com/Dmavala',
+    description: 'Digvijay on GitHub',
   },
   {
     label: 'LNKD',

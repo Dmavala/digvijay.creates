@@ -7,7 +7,7 @@ interface ContactSectionProps {
 
 export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
   const [isWobbling, setIsWobbling] = useState(false);
-  const [hoveredSocial, setHoveredSocial] = useState<'MAIL' | 'LNKD' | 'INSTA' | null>(null);
+  const [hoveredSocial, setHoveredSocial] = useState<'MAIL' | 'LNKD' | 'INSTA' | 'GHUB' | null>(null);
 
   const triggerWobble = () => {
     setIsWobbling(true);
@@ -78,6 +78,22 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
                 color: '#0b66c2',
                 filter: 'drop-shadow(0 0 50px rgba(11, 102, 194, 0.6))',
                 opacity: hoveredSocial === 'LNKD' ? 1 : 0,
+                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1), filter 550ms cubic-bezier(0.16, 1, 0.3, 1)',
+                willChange: 'opacity, filter',
+              }}
+            >
+              MEET ME
+            </span>
+
+            {/* GitHub Purple Layer (GHUB) */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none select-none"
+              style={{
+                gridArea: '1 / 1 / 2 / 2',
+                color: '#a855f7',
+                filter: 'drop-shadow(0 0 50px rgba(168, 85, 247, 0.65))',
+                opacity: hoveredSocial === 'GHUB' ? 1 : 0,
                 transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1), filter 550ms cubic-bezier(0.16, 1, 0.3, 1)',
                 willChange: 'opacity, filter',
               }}
@@ -162,6 +178,8 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
                               ? '#22c55e'
                               : link.label === 'LNKD'
                               ? '#0b66c2'
+                              : link.label === 'GHUB'
+                              ? '#a855f7'
                               : 'transparent',
                           backgroundImage:
                             link.label === 'INSTA'
@@ -174,6 +192,8 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
                               ? 'drop-shadow(0 0 16px rgba(34, 197, 94, 0.7))'
                               : link.label === 'LNKD'
                               ? 'drop-shadow(0 0 16px rgba(11, 102, 194, 0.7))'
+                              : link.label === 'GHUB'
+                              ? 'drop-shadow(0 0 16px rgba(168, 85, 247, 0.7))'
                               : 'drop-shadow(0 0 16px rgba(221, 42, 123, 0.7))',
                           transition: 'opacity 450ms cubic-bezier(0.16, 1, 0.3, 1), filter 450ms cubic-bezier(0.16, 1, 0.3, 1)',
                           willChange: 'opacity, filter',
@@ -192,6 +212,8 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
                             ? 'rgba(34, 197, 94, 0.95)'
                             : link.label === 'LNKD'
                             ? 'rgba(11, 102, 194, 0.95)'
+                            : link.label === 'GHUB'
+                            ? 'rgba(168, 85, 247, 0.95)'
                             : 'rgba(221, 42, 123, 0.95)'
                           : 'rgba(255, 255, 255, 0.35)',
                         transition: 'color 450ms cubic-bezier(0.16, 1, 0.3, 1)',

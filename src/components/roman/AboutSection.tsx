@@ -185,11 +185,11 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ isActive }) => {
             <div className="flex flex-col gap-8 max-w-xl">
               {/* 1. Monumental Name Wordmark */}
               <div className="cinematic-blur-item cinematic-blur-1">
-                <h1 className="font-anton text-[4.5rem] sm:text-[6.5rem] md:text-[7.5rem] lg:text-[8.5rem] xl:text-[9.5rem] 2xl:text-[10.5rem] tracking-tight leading-[0.88] text-white uppercase select-none">
+                <h2 className="font-anton text-[4.5rem] sm:text-[6.5rem] md:text-[7.5rem] lg:text-[8.5rem] xl:text-[9.5rem] 2xl:text-[10.5rem] tracking-tight leading-[0.88] text-white uppercase select-none">
                   DIGVIJAY
                   <br />
                   <span className="text-[#ff0000]">KOHINKAR</span>
-                </h1>
+                </h2>
               </div>
 
               {/* 2. Defining Statement */}
