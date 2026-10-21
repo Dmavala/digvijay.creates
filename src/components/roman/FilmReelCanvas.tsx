@@ -362,6 +362,10 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeClipIndex, setActiveClipIndex] = useState(0);
   const [isRedTheme, setIsRedTheme] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(12);
+  const [loadedClipsCount, setLoadedClipsCount] = useState(0);
+  const [isLoaderExiting, setIsLoaderExiting] = useState(false);
 
   const isMutedRef = useRef(isMuted);
   const isActiveRef = useRef(isActive);
@@ -528,6 +532,46 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       vis: boolean;
     }
 
+    let localLoadedCount = 0;
+    let hasCompletedLoading = false;
+
+    const onAssetLoaded = () => {
+      localLoadedCount++;
+      setLoadedClipsCount(localLoadedCount);
+      const computedPct = Math.min(99, Math.round((localLoadedCount / N) * 100));
+      setLoadProgress((prev) => Math.max(prev, computedPct));
+      if (localLoadedCount >= N) {
+        completeLoading();
+      }
+    };
+
+    const completeLoading = () => {
+      if (hasCompletedLoading) return;
+      hasCompletedLoading = true;
+      setLoadProgress(100);
+      setLoadedClipsCount(N);
+      window.setTimeout(() => {
+        setIsLoaderExiting(true);
+        window.setTimeout(() => {
+          setIsLoading(false);
+        }, 700);
+      }, 350);
+    };
+
+    // Incremental visual ticker while videos buffer
+    const progressTicker = window.setInterval(() => {
+      if (hasCompletedLoading) return;
+      setLoadProgress((prev) => {
+        if (prev < 82) return prev + 2;
+        return prev;
+      });
+    }, 70);
+
+    // Guaranteed fallback timeout so users never get stuck indefinitely
+    const safetyTimeout = window.setTimeout(() => {
+      completeLoading();
+    }, 5500);
+
     const frames: FrameData[] = Array.from({ length: NF }, (_, i) => {
       const j = i - PAD;
       const real = j >= 0 && j < N;
@@ -580,13 +624,30 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         if (containerRef.current) {
           containerRef.current.appendChild(v);
         }
-        v.addEventListener('loadeddata', () => {
+
+        let isMarkedReady = false;
+        const markReady = () => {
+          if (isMarkedReady) return;
+          isMarkedReady = true;
           f.video = v;
           f.dirty = true;
-        });
-        v.addEventListener('error', () => {
+          onAssetLoaded();
+        };
+
+        const markError = () => {
+          if (isMarkedReady) return;
+          isMarkedReady = true;
           f.video = null;
-        });
+          onAssetLoaded();
+        };
+
+        if (v.readyState >= 2) {
+          markReady();
+        } else {
+          v.addEventListener('loadeddata', markReady, { once: true });
+          v.addEventListener('canplay', markReady, { once: true });
+          v.addEventListener('error', markError, { once: true });
+        }
         v.load();
       }
 
@@ -1099,9 +1160,8 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         }
         const isFocal = j === focalClipIdx;
         const distFromFocus = Math.abs(f.s - FOCUS_S);
-        const isHeroBlocked = typeof document !== 'undefined' && document.body.classList.contains('is-loading');
-        // Play video when clip is focal or an immediate adjacent transition neighbor (blocked while loader is visible)
-        const shouldPlay = !isHeroBlocked && f.real && (isFocal || (!isZoomed && distFromFocus < PITCH * 1.25));
+        // Play video when clip is focal or an immediate adjacent transition neighbor
+        const shouldPlay = f.real && (isFocal || (!isZoomed && distFromFocus < PITCH * 1.25));
         setPlay(f, shouldPlay, isFocal);
 
         // Throttled video texture uploads: focal clip uploads every frame;
@@ -1209,6 +1269,8 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     return () => {
       isDisposed = true;
       animRunning = false;
+      window.clearInterval(progressTicker);
+      window.clearTimeout(safetyTimeout);
       resumeLoopRef.current = () => {};
       cancelAnimationFrame(animId);
       cv.removeEventListener('wheel', handleWheel);
@@ -1231,7 +1293,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className="reel-canvas-wrapper w-full h-full absolute inset-0 overflow-hidden flex items-center justify-center select-none touch-none bg-black"
+      className="w-full h-full absolute inset-0 overflow-hidden flex items-center justify-center select-none touch-none bg-black"
     >
       {/* Exact WebGL2 3D Film Reel Canvas */}
       <canvas
@@ -1239,6 +1301,95 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         id="gl"
         className="w-full h-full block cursor-grab active:cursor-grabbing"
       />
+
+      {/* Editorial 35mm Celluloid Loading Screen */}
+      {isLoading && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading reel assets"
+          className={`fixed inset-0 z-[100] flex flex-col justify-between p-6 sm:p-10 md:p-14 bg-black select-none pointer-events-auto transition-opacity duration-700 ease-out ${
+            isLoaderExiting ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
+          style={{ backgroundColor: '#000000' }}
+        >
+          {/* 15-Column Layout Grid Lines Overlay matching site */}
+          <div className="absolute inset-0 pointer-events-none flex justify-between px-6 sm:px-10 md:px-14 opacity-15">
+            {Array.from({ length: 15 }).map((_, i) => (
+              <div key={i} className="h-full w-[1px] bg-white/20" />
+            ))}
+          </div>
+
+          {/* Top Brand & Timecode Bar */}
+          <div className="relative z-10 flex items-center justify-between font-mono text-xs sm:text-sm tracking-widest text-neutral-400 uppercase">
+            <div className="flex items-center gap-3">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#ff0000] animate-pulse" />
+              <span className="text-white font-bold tracking-[0.2em]">DIGVIJAY.CREATES</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-4 text-neutral-500">
+              <span>35MM FILM REEL</span>
+              <span>•</span>
+              <span>24.0 FPS SYNC</span>
+            </div>
+            <div className="text-neutral-400 font-mono tracking-wider">
+              TC 00:00:0{Math.min(9, Math.floor(loadProgress / 11))}:{String(Math.floor((loadProgress * 0.96) % 60)).padStart(2, '0')}
+            </div>
+          </div>
+
+          {/* Centerpiece: Film Spool Graphic, Title, and Glowing Progress Bar */}
+          <div className="relative z-10 flex flex-col items-center justify-center my-auto text-center px-4">
+            {/* Rotating 35mm Film Spool Graphic */}
+            <div className="relative mb-6 sm:mb-8 flex items-center justify-center">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border border-neutral-800 flex items-center justify-center relative">
+                {/* Red rotating arc */}
+                <div
+                  className="absolute inset-0 rounded-full border-2 border-t-[#ff0000] border-r-transparent border-b-transparent border-l-transparent animate-spin"
+                  style={{ animationDuration: '1.1s' }}
+                />
+                {/* Inner core display with percentage */}
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border border-neutral-800 flex items-center justify-center bg-neutral-950 shadow-[0_0_20px_rgba(255,0,0,0.25)]">
+                  <span className="font-mono text-xs sm:text-sm font-bold text-[#ff0000]">
+                    {loadProgress}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-xs sm:text-sm font-mono tracking-[0.3em] text-[#ff0000] uppercase mb-2">
+              INITIALIZING TIMELINE
+            </div>
+
+            <h2 className="font-anton text-4xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight text-white uppercase leading-none mb-6">
+              LOADING REEL
+            </h2>
+
+            {/* Glowing Red Progress Bar */}
+            <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 h-2.5 rounded-full overflow-hidden relative p-[1px]">
+              <div
+                className="h-full bg-gradient-to-r from-[#ff0000] to-[#ff4d4d] rounded-full transition-all duration-300 ease-out relative"
+                style={{
+                  width: `${Math.max(6, loadProgress)}%`,
+                  boxShadow: '0 0 16px rgba(255, 0, 0, 0.75)',
+                }}
+              />
+            </div>
+
+            {/* Progress Metadata */}
+            <div className="mt-4 flex items-center justify-between w-full max-w-md font-mono text-[11px] sm:text-xs text-neutral-500 uppercase tracking-wider">
+              <span>CALIBRATING CLIPS ({loadedClipsCount} / {HERO_CLIPS.length})</span>
+              <span className="text-neutral-300 font-bold">{loadProgress}% LOADED</span>
+            </div>
+          </div>
+
+          {/* Bottom Editorial Bar */}
+          <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-2 font-mono text-[11px] sm:text-xs text-neutral-500 uppercase tracking-widest pt-4 border-t border-neutral-900">
+            <div>VIDEO EDITOR · VADODARA, INDIA</div>
+            <div className="text-neutral-400">
+              PREPARING 3D CINEMATIC VIEWPORT
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Progress Indicators along Right Rail */}
       <div className="absolute right-5 md:right-8 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2.5 pointer-events-none">
