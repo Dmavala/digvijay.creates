@@ -363,7 +363,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
   const [activeClipIndex, setActiveClipIndex] = useState(0);
   const [isRedTheme, setIsRedTheme] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState(12);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [loadedClipsCount, setLoadedClipsCount] = useState(0);
   const [isLoaderExiting, setIsLoaderExiting] = useState(false);
 
@@ -538,8 +538,8 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     const onAssetLoaded = () => {
       localLoadedCount++;
       setLoadedClipsCount(localLoadedCount);
-      const computedPct = Math.min(99, Math.round((localLoadedCount / N) * 100));
-      setLoadProgress((prev) => Math.max(prev, computedPct));
+      const computedPct = Math.round((localLoadedCount / N) * 100);
+      setLoadProgress(computedPct);
       if (localLoadedCount >= N) {
         completeLoading();
       }
@@ -555,22 +555,13 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         window.setTimeout(() => {
           setIsLoading(false);
         }, 700);
-      }, 350);
+      }, 400);
     };
 
-    // Incremental visual ticker while videos buffer
-    const progressTicker = window.setInterval(() => {
-      if (hasCompletedLoading) return;
-      setLoadProgress((prev) => {
-        if (prev < 82) return prev + 2;
-        return prev;
-      });
-    }, 70);
-
-    // Guaranteed fallback timeout so users never get stuck indefinitely
+    // Generous fallback timeout (30 seconds) so it never terminates early while assets are downloading
     const safetyTimeout = window.setTimeout(() => {
       completeLoading();
-    }, 5500);
+    }, 30000);
 
     const frames: FrameData[] = Array.from({ length: NF }, (_, i) => {
       const j = i - PAD;
@@ -613,6 +604,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         v.muted = true;
         v.loop = true;
         v.playsInline = true;
+        v.autoplay = true;
         v.preload = 'auto';
         v.crossOrigin = 'anonymous';
         v.style.position = 'fixed';
@@ -626,11 +618,28 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         }
 
         let isMarkedReady = false;
-        const markReady = () => {
+        const uploadInitialFrame = () => {
           if (isMarkedReady) return;
+          if (v.readyState < 2) return;
           isMarkedReady = true;
           f.video = v;
-          f.dirty = true;
+          f.dirty = false;
+
+          // Directly upload the real video frame into the WebGL texture
+          try {
+            gl!.bindTexture(gl!.TEXTURE_2D, f.tex);
+            gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGBA, gl!.RGBA, gl!.UNSIGNED_BYTE, v);
+          } catch (err) {
+            console.warn('Initial video frame upload:', err);
+          }
+
+          // If this is not the initial focal clip (clip 0), pause it to conserve CPU
+          if (j !== 0) {
+            try {
+              v.pause();
+            } catch {}
+          }
+
           onAssetLoaded();
         };
 
@@ -641,13 +650,13 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
           onAssetLoaded();
         };
 
-        if (v.readyState >= 2) {
-          markReady();
-        } else {
-          v.addEventListener('loadeddata', markReady, { once: true });
-          v.addEventListener('canplay', markReady, { once: true });
-          v.addEventListener('error', markError, { once: true });
-        }
+        v.addEventListener('loadeddata', uploadInitialFrame);
+        v.addEventListener('canplay', uploadInitialFrame);
+        v.addEventListener('timeupdate', uploadInitialFrame);
+        v.addEventListener('error', markError);
+
+        // Explicitly trigger play to initiate media decoding
+        v.play().catch(() => {});
         v.load();
       }
 
@@ -1269,7 +1278,6 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     return () => {
       isDisposed = true;
       animRunning = false;
-      window.clearInterval(progressTicker);
       window.clearTimeout(safetyTimeout);
       resumeLoopRef.current = () => {};
       cancelAnimationFrame(animId);

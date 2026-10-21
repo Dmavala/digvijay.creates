@@ -34,7 +34,7 @@ export const HERO_CLIPS: HeroClip[] = [
     id: 'portfolio',
     title: 'CREATIVE REEL',
     category: 'DIRECTOR CUT',
-    src: '/portfolio.mp4',
+    src: '/clips/portfolio.mp4',
   },
   {
     id: 'south_melody',
