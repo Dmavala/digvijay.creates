@@ -1099,8 +1099,9 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         }
         const isFocal = j === focalClipIdx;
         const distFromFocus = Math.abs(f.s - FOCUS_S);
-        // Play video when clip is focal or an immediate adjacent transition neighbor
-        const shouldPlay = f.real && (isFocal || (!isZoomed && distFromFocus < PITCH * 1.25));
+        const isHeroBlocked = typeof document !== 'undefined' && document.body.classList.contains('is-loading');
+        // Play video when clip is focal or an immediate adjacent transition neighbor (blocked while loader is visible)
+        const shouldPlay = !isHeroBlocked && f.real && (isFocal || (!isZoomed && distFromFocus < PITCH * 1.25));
         setPlay(f, shouldPlay, isFocal);
 
         // Throttled video texture uploads: focal clip uploads every frame;
@@ -1230,7 +1231,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className="w-full h-full absolute inset-0 overflow-hidden flex items-center justify-center select-none touch-none bg-black"
+      className="reel-canvas-wrapper w-full h-full absolute inset-0 overflow-hidden flex items-center justify-center select-none touch-none bg-black"
     >
       {/* Exact WebGL2 3D Film Reel Canvas */}
       <canvas

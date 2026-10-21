@@ -21,7 +21,7 @@ export const SoundToggle: React.FC<SoundToggleProps> = ({
       title={isMuted ? 'Unmute video audio (Press M)' : 'Mute video audio (Press M)'}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
-      className={`fixed top-6 right-6 md:top-8 md:right-10 z-40 group min-h-[44px] min-w-[44px] inline-flex items-center gap-2.5 px-3.5 py-2 md:px-4 md:py-2.5 rounded-sm select-none cursor-pointer transition-all duration-300 font-mono ${
+      className={`sound-toggle-btn fixed top-6 right-6 md:top-8 md:right-10 z-40 group min-h-[44px] min-w-[44px] inline-flex items-center gap-2.5 px-3.5 py-2 md:px-4 md:py-2.5 rounded-sm select-none cursor-pointer transition-all duration-300 font-mono ${
         isMuted
           ? 'bg-black/60 hover:bg-black/90 border border-white/20 hover:border-[#ff0000]/60 text-white/70 hover:text-white'
           : 'bg-black/80 hover:bg-black border border-[#ff0000] text-white shadow-[0_0_18px_rgba(255,0,0,0.35)]'
