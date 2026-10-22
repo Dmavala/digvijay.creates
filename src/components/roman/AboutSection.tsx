@@ -185,7 +185,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ isActive }) => {
             <div className="flex flex-col gap-8 max-w-xl">
               {/* 1. Monumental Name Wordmark */}
               <div className="cinematic-blur-item cinematic-blur-1">
-                <h2 className="font-anton text-[4.5rem] sm:text-[6.5rem] md:text-[7.5rem] lg:text-[8.5rem] xl:text-[9.5rem] 2xl:text-[10.5rem] tracking-tight leading-[0.88] text-white uppercase select-none">
+                <h2 className="font-anton text-[clamp(3.5rem,14vw,4.5rem)] sm:text-[6.5rem] md:text-[7.5rem] lg:text-[8.5rem] xl:text-[9.5rem] 2xl:text-[10.5rem] tracking-tight leading-[0.88] text-white uppercase select-none">
                   DIGVIJAY
                   <br />
                   <span className="text-[#ff0000]">KOHINKAR</span>
@@ -366,6 +366,28 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ isActive }) => {
         @media (max-width: 1024px) {
           .ascii-art pre {
             font-size: clamp(2.8px, 0.85vw, 4.8px);
+          }
+        }
+        @media (max-width: 768px) {
+          .ascii-about {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+          }
+          .ascii-frame {
+            max-width: 100%;
+            overflow: hidden;
+          }
+          .ascii-art pre {
+            font-size: clamp(2.1px, 0.72vw, 3.6px) !important;
+            line-height: 1.08 !important;
+            max-width: 100%;
+          }
+        }
+        @media (max-width: 480px) {
+          .ascii-art pre {
+            font-size: clamp(1.85px, 0.6vw, 2.7px) !important;
+            line-height: 1.05 !important;
           }
         }
       `}</style>

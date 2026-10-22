@@ -32,7 +32,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
           }}
         >
           <h2
-            className={`reveal-rise ${isActive ? 'is-revealed' : ''} font-anton text-[clamp(5rem,13vw,14rem)] leading-[0.85] tracking-tight uppercase select-none grid place-items-center`}
+            className={`reveal-rise ${isActive ? 'is-revealed' : ''} font-anton text-[clamp(3.8rem,13vw,14rem)] leading-[0.85] tracking-tight uppercase select-none grid place-items-center`}
             style={{ animationDelay: '180ms' }}
           >
             {/* Accessible screen reader announcement */}
@@ -234,7 +234,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
         <div
           aria-hidden="true"
           onClick={triggerWobble}
-          className={`absolute -bottom-24 sm:-bottom-28 right-0 sm:-right-20 md:-right-32 w-28 h-36 md:w-36 md:h-44 cursor-pointer transition-all duration-200 hover:scale-110 -rotate-12 ${
+          className={`absolute -bottom-16 sm:-bottom-28 right-1 sm:-right-20 md:-right-32 w-20 h-28 sm:w-28 sm:h-36 md:w-36 md:h-44 cursor-pointer transition-all duration-200 hover:scale-110 -rotate-12 ${
             isActive ? 'opacity-100' : 'opacity-0'
           } ${isWobbling ? 'animate-bounce' : 'hover:-rotate-6'}`}
           style={{ transitionDelay: isActive ? '460ms' : '0ms' }}

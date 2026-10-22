@@ -380,6 +380,46 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
 
   const hasMountedRef = useRef(false);
 
+  // Lock body scroll and toggle is-reel-zoomed on mobile while the expanded reel view is open
+  useEffect(() => {
+    if (isZoomed) {
+      document.body.classList.add('is-reel-zoomed');
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.classList.remove('is-reel-zoomed');
+        document.body.style.overflow = prevOverflow;
+      };
+    } else {
+      document.body.classList.remove('is-reel-zoomed');
+    }
+  }, [isZoomed]);
+
+  const handleCloseZoom = () => {
+    isZoomedRef.current = false;
+    reelAudio.playZoomOut();
+    if (onZoomOutRef.current) onZoomOutRef.current();
+  };
+
+  const touchStartY = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
+
+  const handleModalTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleModalTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartY.current === null) return;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    const dx = e.changedTouches[0].clientX - (touchStartX.current || 0);
+    if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) {
+      handleCloseZoom();
+    }
+    touchStartY.current = null;
+    touchStartX.current = null;
+  };
+
   useEffect(() => {
     isMutedRef.current = isMuted;
     const wasActive = isActiveRef.current;
@@ -1134,8 +1174,10 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       // 2. Horizontally-aligned perpendicular camera facing the film aperture when zoomed
       const parallaxX = smx * 0.04;
       const parallaxY = -smy * 0.04;
+      const aspect = W / Math.max(1, H);
+      const zoomDist = aspect < 1.0 ? CAM_DIST_ZOOM * Math.max(1.85, 1.45 / aspect) : CAM_DIST_ZOOM;
       const cp_zoomed = add(
-        add(focalP, mul(focalN, CAM_DIST_ZOOM)),
+        add(focalP, mul(focalN, zoomDist)),
         add(mul(focalT, parallaxX), mul(focalB, parallaxY))
       );
 
@@ -1372,7 +1414,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
             </h2>
 
             {/* Glowing Red Progress Bar */}
-            <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 h-2.5 rounded-full overflow-hidden relative p-[1px]">
+            <div className="w-full max-w-xs sm:max-w-md bg-neutral-900 border border-neutral-800 h-2.5 rounded-full overflow-hidden relative p-[1px]">
               <div
                 className="h-full bg-gradient-to-r from-[#ff0000] to-[#ff4d4d] rounded-full transition-all duration-300 ease-out relative"
                 style={{
@@ -1383,7 +1425,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
             </div>
 
             {/* Progress Metadata */}
-            <div className="mt-4 flex items-center justify-between w-full max-w-md font-mono text-[11px] sm:text-xs text-neutral-500 uppercase tracking-wider">
+            <div className="mt-4 flex items-center justify-between w-full max-w-xs sm:max-w-md font-mono text-[11px] sm:text-xs text-neutral-500 uppercase tracking-wider">
               <span>CALIBRATING CLIPS ({loadedClipsCount} / {HERO_CLIPS.length})</span>
               <span className="text-neutral-300 font-bold">{loadProgress}% LOADED</span>
             </div>
@@ -1400,7 +1442,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       )}
 
       {/* Progress Indicators along Right Rail */}
-      <div className="absolute right-5 md:right-8 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2.5 pointer-events-none">
+      <div className="absolute right-2.5 sm:right-5 md:right-8 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2.5 pointer-events-none">
         {HERO_CLIPS.map((_, idx) => (
           <div
             key={idx}
@@ -1416,7 +1458,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       </div>
 
       {/* Theme Atmosphere Selector (Roman Red vs Studio Blue) */}
-      <div className="absolute top-6 right-8 md:top-8 md:right-12 z-30 flex items-center select-none">
+      <div className="absolute top-[max(16px,env(safe-area-inset-top,16px))] right-[max(16px,env(safe-area-inset-right,16px))] md:top-8 md:right-12 z-30 flex items-center select-none min-w-[44px] min-h-[44px] justify-center">
         <Switch
           checked={isRedTheme}
           onChange={(e) => setIsRedTheme(e.target.checked)}
@@ -1435,18 +1477,84 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         }}
       >
         <p className="mobileMessage block md:hidden text-xs text-white/50 mb-2 font-bold tracking-wider uppercase text-right">
-          {isZoomed ? 'Scroll to zoom out' : 'Click clip to view work · Scroll to spin reel'}
+          {isZoomed ? 'Scroll or swipe to zoom out' : 'Click clip to view work · Scroll to spin reel'}
         </p>
         <header className="text text-right pointer-events-auto">
           <p className="job-title text-[#ff0000] tracking-wider font-bold mb-1">
             VIDEO EDITOR
           </p>
           <h1 className="name-title text-[#ff0000] tracking-tight font-normal">
-            DIGVIJAY.CREATES
+            <span className="inline-block">DIGVIJAY.</span>
+            <span className="inline-block">CREATES</span>
             <span className="sr-only"> — Digvijay Rishikesh Kohinkar, Video Editor Portfolio</span>
           </h1>
         </header>
       </section>
+
+      {/* Mobile Expanded Lightbox Modal (md:hidden) */}
+      {isZoomed && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Expanded reel view"
+          onTouchStart={handleModalTouchStart}
+          onTouchEnd={handleModalTouchEnd}
+          onClick={handleCloseZoom}
+          className="md:hidden fixed inset-0 z-[60] flex flex-col items-center justify-between bg-black/95 backdrop-blur-md safe-area-inset select-none"
+        >
+          {/* Top Bar with Safe-Area & 44px+ Close Button */}
+          <div
+            className="w-full flex items-center justify-between p-4 pt-[max(16px,env(safe-area-inset-top,16px))] px-[max(16px,env(safe-area-inset-right,16px))] z-20 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-mono text-xs sm:text-sm tracking-widest text-neutral-400 uppercase">
+              <span className="text-[#ff0000] font-bold">REEL {activeClipIndex + 1}</span> / {HERO_CLIPS.length}
+            </div>
+            <button
+              type="button"
+              onClick={handleCloseZoom}
+              aria-label="Close expanded view"
+              className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-[#ff0000] active:scale-95 text-white flex items-center justify-center transition-colors shadow-lg border border-white/20 backdrop-blur-sm cursor-pointer"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Centered Video Viewport with object-fit: contain */}
+          <div
+            className="relative flex-1 w-full flex items-center justify-center p-3 sm:p-4 overflow-hidden pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <video
+              key={HERO_CLIPS[activeClipIndex]?.src || 'reel-video'}
+              src={HERO_CLIPS[activeClipIndex]?.src}
+              autoPlay
+              playsInline
+              muted={isMuted}
+              loop
+              className="max-w-[100vw] max-h-[66dvh] w-auto h-auto object-contain rounded-lg shadow-2xl border border-white/10"
+            />
+          </div>
+
+          {/* Captions & Controls pinned at bottom inside safe area */}
+          <div
+            className="w-full p-4 pb-[max(20px,env(safe-area-inset-bottom,20px))] px-[max(16px,env(safe-area-inset-left,16px))] bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center text-center z-20 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="text-xs sm:text-sm font-mono tracking-[0.25em] text-[#ff0000] uppercase mb-1">
+              {HERO_CLIPS[activeClipIndex]?.category}
+            </span>
+            <h3 className="font-anton text-2xl sm:text-3xl text-white uppercase tracking-wide mb-1.5">
+              {HERO_CLIPS[activeClipIndex]?.title}
+            </h3>
+            <p className="text-xs text-neutral-400 font-mono tracking-wider">
+              Tap backdrop to close · Swipe to dismiss
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
