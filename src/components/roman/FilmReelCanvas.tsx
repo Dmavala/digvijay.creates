@@ -367,6 +367,12 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
   const [loadedClipsCount, setLoadedClipsCount] = useState(0);
   const [isLoaderExiting, setIsLoaderExiting] = useState(false);
 
+  // Mobile Lightbox Modal Player States
+  const modalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isModalMuted, setIsModalMuted] = useState(true);
+  const [videoProgress, setVideoProgress] = useState(0);
+
   const isMutedRef = useRef(isMuted);
   const isActiveRef = useRef(isActive);
   const isRedThemeRef = useRef(isRedTheme);
@@ -395,6 +401,91 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     }
   }, [isZoomed]);
 
+  // Sync modal video playback, mute state, and event listeners on mobile
+  useEffect(() => {
+    if (!isZoomed) return;
+    const v = modalVideoRef.current;
+    if (!v) return;
+
+    v.defaultMuted = true;
+    v.muted = isModalMuted;
+    v.playsInline = true;
+    v.setAttribute('playsinline', 'true');
+    v.setAttribute('webkit-playsinline', 'true');
+
+    const tryPlay = () => {
+      const p = v.play();
+      if (p !== undefined) {
+        p.then(() => setIsPlaying(true))
+          .catch((err) => {
+            console.warn('Mobile video autoplay prevented:', err);
+            // Guarantee muted and retry
+            v.muted = true;
+            setIsModalMuted(true);
+            v.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+          });
+      }
+    };
+
+    tryPlay();
+    v.addEventListener('loadeddata', tryPlay);
+    v.addEventListener('canplay', tryPlay);
+
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onTimeUpdate = () => {
+      if (v.duration) {
+        setVideoProgress((v.currentTime / v.duration) * 100);
+      }
+    };
+
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    v.addEventListener('timeupdate', onTimeUpdate);
+
+    return () => {
+      v.removeEventListener('loadeddata', tryPlay);
+      v.removeEventListener('canplay', tryPlay);
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+      v.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, [isZoomed, activeClipIndex, isModalMuted]);
+
+  const handleTogglePlay = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    const v = modalVideoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().then(() => setIsPlaying(true)).catch(() => {});
+    } else {
+      v.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleToggleSound = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const v = modalVideoRef.current;
+    if (!v) return;
+    const nextMuted = !isModalMuted;
+    v.muted = nextMuted;
+    setIsModalMuted(nextMuted);
+    if (v.paused) {
+      v.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
+
+  const handleNextClip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveClipIndex((prev) => (prev + 1) % HERO_CLIPS.length);
+  };
+
+  const handlePrevClip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveClipIndex((prev) => (prev - 1 + HERO_CLIPS.length) % HERO_CLIPS.length);
+  };
+
   const handleCloseZoom = () => {
     isZoomedRef.current = false;
     reelAudio.playZoomOut();
@@ -413,8 +504,16 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     if (touchStartY.current === null) return;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     const dx = e.changedTouches[0].clientX - (touchStartX.current || 0);
-    if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) {
+    // Vertical swipe dismisses modal
+    if (Math.abs(dy) > 55 && Math.abs(dy) > Math.abs(dx)) {
       handleCloseZoom();
+    } else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal swipe navigates between clips!
+      if (dx < 0) {
+        setActiveClipIndex((prev) => (prev + 1) % HERO_CLIPS.length);
+      } else {
+        setActiveClipIndex((prev) => (prev - 1 + HERO_CLIPS.length) % HERO_CLIPS.length);
+      }
     }
     touchStartY.current = null;
     touchStartX.current = null;
@@ -731,9 +830,9 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
 
     function setPlay(f: FrameData, on: boolean, isFocal: boolean) {
       if (!f.video) return;
-      // Sound of the reel video is enabled when zoomed in!
-      // When zoomed out on the 3D helical reel, videos are muted so browsing is quiet and tactile.
-      const shouldMute = !isZoomedRef.current || !isActiveRef.current || !isFocal;
+      // On mobile devices (<= 768px), keep WebGL canvas videos muted and let the modal handle focal audio/playback
+      const isMobile = window.innerWidth <= 768;
+      const shouldMute = isMobile || !isZoomedRef.current || !isActiveRef.current || !isFocal;
       if (f.video.muted !== shouldMute) {
         f.video.muted = shouldMute;
         if (!shouldMute) {
@@ -743,6 +842,14 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
           f.video.volume = 0.5;
           f.video.play().catch(() => {});
         }
+      }
+      // On mobile when zoomed in, pause background WebGL videos so the mobile device's hardware decoder isn't overwhelmed
+      if (isMobile && isZoomedRef.current) {
+        if (f.playing) {
+          f.video.pause();
+          f.playing = false;
+        }
+        return;
       }
       if (f.playing === on) return;
       f.playing = on;
@@ -1016,6 +1123,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
 
         // Snap target to clicked clip
         target = clickedClip / (N - 1);
+        setActiveClipIndex(clickedClip);
         isZoomedRef.current = true;
         reelAudio.ensure();
         reelAudio.playZoomIn();
@@ -1502,55 +1610,135 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
           onClick={handleCloseZoom}
           className="md:hidden fixed inset-0 z-[60] flex flex-col items-center justify-between bg-black/95 backdrop-blur-md safe-area-inset select-none"
         >
-          {/* Top Bar with Safe-Area & 44px+ Close Button */}
+          {/* Top Bar with Safe-Area, Sound Toggle & 44px+ Close Button */}
           <div
             className="w-full flex items-center justify-between p-4 pt-[max(16px,env(safe-area-inset-top,16px))] px-[max(16px,env(safe-area-inset-right,16px))] z-20 pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="font-mono text-xs sm:text-sm tracking-widest text-neutral-400 uppercase">
-              <span className="text-[#ff0000] font-bold">REEL {activeClipIndex + 1}</span> / {HERO_CLIPS.length}
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#ff0000] animate-pulse" />
+              <div className="font-mono text-xs sm:text-sm tracking-widest text-neutral-300 uppercase">
+                <span className="text-[#ff0000] font-bold">REEL {activeClipIndex + 1}</span> / {HERO_CLIPS.length}
+              </div>
             </div>
+
+            <div className="flex items-center gap-2.5">
+              {/* Sound Toggle Button */}
+              <button
+                type="button"
+                onClick={handleToggleSound}
+                aria-label={isModalMuted ? 'Turn sound on' : 'Mute sound'}
+                className="min-w-[44px] min-h-[44px] px-3 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center gap-1.5 transition-all border border-white/20 backdrop-blur-sm cursor-pointer"
+              >
+                {isModalMuted ? (
+                  <>
+                    <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                    </svg>
+                    <span className="font-mono text-[11px] font-bold tracking-wider text-neutral-300">UNMUTE</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    <span className="font-mono text-[11px] font-bold tracking-wider text-green-400">SOUND ON</span>
+                  </>
+                )}
+              </button>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={handleCloseZoom}
+                aria-label="Close expanded view"
+                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-[#ff0000] active:scale-95 text-white flex items-center justify-center transition-colors shadow-lg border border-white/20 backdrop-blur-sm cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Centered Video Viewport with object-fit: contain & tap-to-play */}
+          <div
+            className="relative flex-1 w-full flex items-center justify-center p-3 sm:p-4 overflow-hidden pointer-events-auto cursor-pointer"
+            onClick={handleTogglePlay}
+          >
+            {/* Previous Reel Navigation Arrow */}
             <button
               type="button"
-              onClick={handleCloseZoom}
-              aria-label="Close expanded view"
-              className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-[#ff0000] active:scale-95 text-white flex items-center justify-center transition-colors shadow-lg border border-white/20 backdrop-blur-sm cursor-pointer"
+              onClick={handlePrevClip}
+              aria-label="Previous reel"
+              className="absolute left-2 sm:left-4 z-30 min-w-[44px] min-h-[44px] p-2 rounded-full bg-black/60 hover:bg-black/90 active:scale-90 text-white flex items-center justify-center border border-white/20 backdrop-blur-md cursor-pointer transition-transform"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            {/* Video Container */}
+            <div className="relative max-w-[100vw] max-h-[66dvh] flex items-center justify-center">
+              <video
+                ref={modalVideoRef}
+                key={HERO_CLIPS[activeClipIndex]?.src || 'reel-video'}
+                src={HERO_CLIPS[activeClipIndex]?.src}
+                autoPlay
+                playsInline
+                muted={isModalMuted}
+                loop
+                preload="auto"
+                className="max-w-[100vw] max-h-[66dvh] w-auto h-auto object-contain rounded-lg shadow-2xl border border-white/10"
+              />
+
+              {/* Big Center Play Button Overlay when paused */}
+              {!isPlaying && (
+                <div className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/75 border-2 border-[#ff0000] text-white flex items-center justify-center shadow-[0_0_30px_rgba(255,0,0,0.6)] backdrop-blur-md pointer-events-none transition-transform">
+                  <svg className="w-8 h-8 ml-1 text-white fill-current" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              )}
+            </div>
+
+            {/* Next Reel Navigation Arrow */}
+            <button
+              type="button"
+              onClick={handleNextClip}
+              aria-label="Next reel"
+              className="absolute right-2 sm:right-4 z-30 min-w-[44px] min-h-[44px] p-2 rounded-full bg-black/60 hover:bg-black/90 active:scale-90 text-white flex items-center justify-center border border-white/20 backdrop-blur-md cursor-pointer transition-transform"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </div>
 
-          {/* Centered Video Viewport with object-fit: contain */}
+          {/* Captions, Scrubber & Controls pinned at bottom inside safe area */}
           <div
-            className="relative flex-1 w-full flex items-center justify-center p-3 sm:p-4 overflow-hidden pointer-events-auto"
+            className="w-full p-4 pb-[max(20px,env(safe-area-inset-bottom,20px))] px-[max(16px,env(safe-area-inset-left,16px))] bg-gradient-to-t from-black via-black/85 to-transparent flex flex-col items-center text-center z-20 pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <video
-              key={HERO_CLIPS[activeClipIndex]?.src || 'reel-video'}
-              src={HERO_CLIPS[activeClipIndex]?.src}
-              autoPlay
-              playsInline
-              muted={isMuted}
-              loop
-              className="max-w-[100vw] max-h-[66dvh] w-auto h-auto object-contain rounded-lg shadow-2xl border border-white/10"
-            />
-          </div>
+            {/* Playback Progress Line */}
+            <div className="w-full max-w-xs sm:max-w-md bg-white/15 h-1 rounded-full overflow-hidden mb-3">
+              <div
+                className="bg-[#ff0000] h-full transition-all duration-150 rounded-full"
+                style={{ width: `${Math.max(2, videoProgress)}%` }}
+              />
+            </div>
 
-          {/* Captions & Controls pinned at bottom inside safe area */}
-          <div
-            className="w-full p-4 pb-[max(20px,env(safe-area-inset-bottom,20px))] px-[max(16px,env(safe-area-inset-left,16px))] bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center text-center z-20 pointer-events-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
             <span className="text-xs sm:text-sm font-mono tracking-[0.25em] text-[#ff0000] uppercase mb-1">
               {HERO_CLIPS[activeClipIndex]?.category}
             </span>
             <h3 className="font-anton text-2xl sm:text-3xl text-white uppercase tracking-wide mb-1.5">
               {HERO_CLIPS[activeClipIndex]?.title}
             </h3>
-            <p className="text-xs text-neutral-400 font-mono tracking-wider">
-              Tap backdrop to close · Swipe to dismiss
+            <p className="text-xs text-neutral-400 font-mono tracking-wider flex items-center gap-2">
+              <span>Tap video to {isPlaying ? 'pause' : 'play'}</span>
+              <span>•</span>
+              <span>Swipe to dismiss</span>
             </p>
           </div>
         </div>
