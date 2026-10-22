@@ -75,11 +75,8 @@ export const TheatreScreenCanvas: React.FC<TheatreScreenCanvasProps> = ({
     }
   }, [activeClipIndex, syncAudioPlayback]);
 
-  // Buffer window: only the centred clip and the neighbours it can visibly lay over
-  // are fetched up front. Previously every clip used preload="auto" + autoPlay, so the
-  // deck pulled all seven files (~180 MB, one of them a 91 MB reel) before the visitor
-  // touched anything. Clips further out stay untouched until the deck scrolls to them.
-  const bufferWindow = 2;
+  // Buffer window: only the centred clip and immediate neighbor (at most 2 decoders)
+  const bufferWindow = 1;
 
   useEffect(() => {
     videoRefs.current.forEach((video, idx) => {
@@ -90,6 +87,7 @@ export const TheatreScreenCanvas: React.FC<TheatreScreenCanvasProps> = ({
 
       const inWindow = Math.abs(idx - activeClipIndex) <= bufferWindow;
       if (inWindow && isActiveRef.current) {
+        if (video.preload !== 'auto') video.preload = 'auto';
         if (video.paused) video.play().catch(() => {});
       } else if (!video.paused) {
         // Paused offscreen clips keep their decoded frame without burning a decoder.
@@ -478,7 +476,8 @@ export const TheatreScreenCanvas: React.FC<TheatreScreenCanvasProps> = ({
               {/* Embedded Video Element */}
               <video
                 ref={(el) => (videoRefs.current[idx] = el)}
-                src={clip.src}
+                src={typeof window !== 'undefined' && window.innerWidth <= 768 ? clip.mobileSrc : clip.src}
+                poster={clip.poster}
                 loop
                 muted
                 playsInline

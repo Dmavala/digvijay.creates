@@ -378,6 +378,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
   const isZoomedRef = useRef(isZoomed);
   const zoomFactorRef = useRef(isZoomed ? 1.0 : 0.0);
   const resumeLoopRef = useRef<() => void>(() => {});
+  const setReelTargetRef = useRef<(t: number) => void>(() => {});
 
   const onZoomInRef = useRef(onZoomIn);
   const onZoomOutRef = useRef(onZoomOut);
@@ -406,16 +407,22 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     if (!v) return;
 
     if (!isZoomed) {
-      if (!v.paused) {
+      if (v.src) {
         v.pause();
+        v.removeAttribute('src');
+        v.load();
         setIsPlaying(false);
       }
       return;
     }
 
     const clip = HERO_CLIPS[activeClipIndex];
-    if (clip && v.src !== clip.src && !v.src.endsWith(clip.src)) {
-      v.src = clip.src;
+    if (!clip) return;
+    const isMobile = window.innerWidth <= 768;
+    const targetSrc = isMobile ? (clip.mobileSrc || clip.src) : clip.src;
+    if (v.src !== targetSrc && !v.src.endsWith(targetSrc)) {
+      v.src = targetSrc;
+      v.poster = clip.poster;
       try {
         v.currentTime = 0;
       } catch {}
@@ -444,6 +451,21 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     v.addEventListener('loadeddata', tryPlay);
     v.addEventListener('canplay', tryPlay);
 
+    // Stalls & waiting recovery with exponential retry
+    let modalStallTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleModalStalled = () => {
+      if (modalStallTimer) return;
+      modalStallTimer = setTimeout(() => {
+        modalStallTimer = null;
+        if (v.paused && isZoomedRef.current) {
+          v.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      }, 400);
+    };
+
+    v.addEventListener('waiting', handleModalStalled);
+    v.addEventListener('stalled', handleModalStalled);
+
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onTimeUpdate = () => {
@@ -457,8 +479,11 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     v.addEventListener('timeupdate', onTimeUpdate);
 
     return () => {
+      if (modalStallTimer) clearTimeout(modalStallTimer);
       v.removeEventListener('loadeddata', tryPlay);
       v.removeEventListener('canplay', tryPlay);
+      v.removeEventListener('waiting', handleModalStalled);
+      v.removeEventListener('stalled', handleModalStalled);
       v.removeEventListener('play', onPlay);
       v.removeEventListener('pause', onPause);
       v.removeEventListener('timeupdate', onTimeUpdate);
@@ -485,19 +510,26 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
 
   const handleNextClip = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setActiveClipIndex((prev) => (prev + 1) % HERO_CLIPS.length);
+    const nextIdx = (activeClipIndex + 1) % HERO_CLIPS.length;
+    setActiveClipIndex(nextIdx);
+    setReelTargetRef.current(nextIdx / (HERO_CLIPS.length - 1));
   };
 
   const handlePrevClip = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setActiveClipIndex((prev) => (prev - 1 + HERO_CLIPS.length) % HERO_CLIPS.length);
+    const prevIdx = (activeClipIndex - 1 + HERO_CLIPS.length) % HERO_CLIPS.length;
+    setActiveClipIndex(prevIdx);
+    setReelTargetRef.current(prevIdx / (HERO_CLIPS.length - 1));
   };
 
   const handleCloseZoom = () => {
     isZoomedRef.current = false;
     reelAudio.playZoomOut();
     if (modalVideoRef.current) {
-      modalVideoRef.current.pause();
+      const v = modalVideoRef.current;
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
       setIsPlaying(false);
     }
     if (onZoomOutRef.current) onZoomOutRef.current();
@@ -521,9 +553,13 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     } else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
       // Horizontal swipe navigates between clips!
       if (dx < 0) {
-        setActiveClipIndex((prev) => (prev + 1) % HERO_CLIPS.length);
+        const nextIdx = (activeClipIndex + 1) % HERO_CLIPS.length;
+        setActiveClipIndex(nextIdx);
+        setReelTargetRef.current(nextIdx / (HERO_CLIPS.length - 1));
       } else {
-        setActiveClipIndex((prev) => (prev - 1 + HERO_CLIPS.length) % HERO_CLIPS.length);
+        const prevIdx = (activeClipIndex - 1 + HERO_CLIPS.length) % HERO_CLIPS.length;
+        setActiveClipIndex(prevIdx);
+        setReelTargetRef.current(prevIdx / (HERO_CLIPS.length - 1));
       }
     }
     touchStartY.current = null;
@@ -677,6 +713,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       dirty: boolean;
       s: number;
       lastMeshS: number;
+      lastUploadedTime: number;
       pos: number[];
       dist: number;
       vis: boolean;
@@ -708,10 +745,12 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       }, 400);
     };
 
-    // Generous fallback timeout (30 seconds) so it never terminates early while assets are downloading
+    // Fallback safety timeout (12s)
     const safetyTimeout = window.setTimeout(() => {
       completeLoading();
-    }, 30000);
+    }, 12000);
+
+    const isMobileViewport = window.innerWidth <= 768;
 
     const frames: FrameData[] = Array.from({ length: NF }, (_, i) => {
       const j = i - PAD;
@@ -743,19 +782,38 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         dirty: false,
         s: 0,
         lastMeshS: -9999,
+        lastUploadedTime: -1,
         pos: [0, 0, 0],
         dist: 0,
         vis: false,
       };
 
       if (clip && clip.src) {
+        const videoSrc = isMobileViewport ? (clip.mobileSrc || clip.src) : clip.src;
+        const isInitialFocal = j === 0;
+
+        // Instant poster upload into WebGL texture to prevent black flash
+        const posterImg = new Image();
+        posterImg.src = clip.poster;
+        posterImg.onload = () => {
+          try {
+            gl!.bindTexture(gl!.TEXTURE_2D, f.tex);
+            gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGBA, gl!.RGBA, gl!.UNSIGNED_BYTE, posterImg);
+            f.dirty = true;
+          } catch {}
+          onAssetLoaded();
+        };
+        posterImg.onerror = () => {
+          onAssetLoaded();
+        };
+
         const v = document.createElement('video');
-        v.src = clip.src;
+        v.src = videoSrc;
         v.muted = true;
         v.loop = true;
         v.playsInline = true;
-        v.autoplay = true;
-        v.preload = 'auto';
+        v.autoplay = isInitialFocal;
+        v.preload = isInitialFocal ? 'auto' : 'metadata';
         v.crossOrigin = 'anonymous';
         v.style.position = 'fixed';
         v.style.width = '1px';
@@ -775,39 +833,50 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
           f.video = v;
           f.dirty = false;
 
-          // Directly upload the real video frame into the WebGL texture
           try {
             gl!.bindTexture(gl!.TEXTURE_2D, f.tex);
             gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGBA, gl!.RGBA, gl!.UNSIGNED_BYTE, v);
+            f.lastUploadedTime = v.currentTime;
           } catch (err) {
             console.warn('Initial video frame upload:', err);
           }
 
-          // If this is not the initial focal clip (clip 0), pause it to conserve CPU
           if (j !== 0) {
             try {
               v.pause();
             } catch {}
           }
-
-          onAssetLoaded();
         };
 
         const markError = () => {
           if (isMarkedReady) return;
           isMarkedReady = true;
           f.video = null;
-          onAssetLoaded();
+        };
+
+        // Stall recovery
+        let stallRetryTimer: ReturnType<typeof setTimeout> | null = null;
+        const handleStall = () => {
+          if (stallRetryTimer) return;
+          stallRetryTimer = setTimeout(() => {
+            stallRetryTimer = null;
+            if (f.playing && v.paused) {
+              v.play().catch(() => {});
+            }
+          }, 350);
         };
 
         v.addEventListener('loadeddata', uploadInitialFrame);
         v.addEventListener('canplay', uploadInitialFrame);
         v.addEventListener('timeupdate', uploadInitialFrame);
+        v.addEventListener('waiting', handleStall);
+        v.addEventListener('stalled', handleStall);
         v.addEventListener('error', markError);
 
-        // Explicitly trigger play to initiate media decoding
-        v.play().catch(() => {});
-        v.load();
+        if (isInitialFocal) {
+          v.play().catch(() => {});
+          v.load();
+        }
         if (v.readyState >= 2) {
           uploadInitialFrame();
         }
@@ -868,6 +937,9 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       if (f.playing === on) return;
       f.playing = on;
       if (on) {
+        if (f.video.preload !== 'auto') {
+          f.video.preload = 'auto';
+        }
         f.video.play().catch(() => {});
       } else {
         f.video.pause();
@@ -972,6 +1044,9 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
 
     /* Scroll, Drag, & Zoom Physics */
     let target = 0;
+    setReelTargetRef.current = (t: number) => {
+      target = clamp(t, 0, 1);
+    };
     let cur = 0;
     let mx = 0;
     let my = 0;
@@ -1252,6 +1327,9 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     };
     window.addEventListener('resize', onResize);
 
+    const renderOrder: FrameData[] = [];
+    const vpArray = new Float32Array(16);
+
     /* Animation Frame Render Loop */
     function renderFrame(now: number) {
       if (isDisposed) return;
@@ -1353,8 +1431,10 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
 
       // Position frames along the 3D spline
       const u = cur * (N - 1);
-      const order: FrameData[] = [];
+      renderOrder.length = 0;
       const isZoomed = isZoomedRef.current;
+      const isMobile = window.innerWidth <= 768;
+
       frames.forEach((f, i) => {
         const j = i - PAD;
         f.s = FOCUS_S + (u - j) * PITCH;
@@ -1370,29 +1450,32 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
         }
         const isFocal = j === focalClipIdx;
         const distFromFocus = Math.abs(f.s - FOCUS_S);
-        // Play video when clip is focal or an immediate adjacent transition neighbor
-        const shouldPlay = f.real && (isFocal || (!isZoomed && distFromFocus < PITCH * 1.25));
+        // Play video when clip is focal or an immediate adjacent transition neighbor (desktop only)
+        const shouldPlay = f.real && (isFocal || (!isMobile && !isZoomed && distFromFocus < PITCH * 0.95));
         setPlay(f, shouldPlay, isFocal);
 
-        // Throttled video texture uploads: focal clip uploads every frame;
-        // adjacent neighbor uploads on alternate frames to eliminate GPU bus saturation
+        // Throttled video texture uploads: upload ONLY when currentTime advances or texture is dirty
         let shouldUpload = false;
         if (f.video && (f.playing || f.dirty) && f.video.readyState >= 2) {
-          if (isFocal || f.dirty) {
+          const timeChanged = f.video.currentTime !== f.lastUploadedTime;
+          if (f.dirty) {
             shouldUpload = true;
-          } else if (!isZoomed && distFromFocus < PITCH * 1.25) {
-            shouldUpload = frameCount % 2 === 0;
+          } else if (isFocal) {
+            shouldUpload = timeChanged;
+          } else if (!isMobile && !isZoomed && distFromFocus < PITCH * 0.95) {
+            shouldUpload = timeChanged && (frameCount % 2 === 0);
           }
         }
         if (shouldUpload && f.video) {
           gl!.bindTexture(gl!.TEXTURE_2D, f.tex);
           gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGBA, gl!.RGBA, gl!.UNSIGNED_BYTE, f.video);
+          f.lastUploadedTime = f.video.currentTime;
           f.dirty = false;
         }
         f.dist = Math.hypot(...sub(f.pos, cp));
-        order.push(f);
+        renderOrder.push(f);
       });
-      order.sort((a, b) => b.dist - a.dist);
+      renderOrder.sort((a, b) => b.dist - a.dist);
 
       // Pass 1: Backdrop + Strip into MSAA Target
       gl!.bindFramebuffer(gl!.FRAMEBUFFER, msFBO);
@@ -1416,13 +1499,14 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       gl!.enable(gl!.BLEND);
       gl!.blendFunc(gl!.SRC_ALPHA, gl!.ONE_MINUS_SRC_ALPHA);
       gl!.useProgram(pFilm);
-      gl!.uniformMatrix4fv(uF.vp, false, new Float32Array(vp));
+      vpArray.set(vp);
+      gl!.uniformMatrix4fv(uF.vp, false, vpArray);
       gl!.uniform3fv(uF.cam, cp);
       gl!.uniform1f(uF.len, PLEN);
       gl!.uniform1i(uF.vid, 0);
       gl!.uniform1i(uF.edge, 1);
 
-      for (const f of order) {
+      for (const f of renderOrder) {
         gl!.uniform1f(uF.blank, f.real ? 0 : 1);
         gl!.activeTexture(gl!.TEXTURE0);
         gl!.bindTexture(gl!.TEXTURE_2D, f.tex);
@@ -1468,7 +1552,7 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     }
 
     function startLoop() {
-      if (!animRunning && !isDisposed && isActiveRef.current) {
+      if (!animRunning && !isDisposed && isActiveRef.current && !document.hidden) {
         animRunning = true;
         animId = requestAnimationFrame(renderFrame);
       }
@@ -1476,11 +1560,64 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
     resumeLoopRef.current = startLoop;
     startLoop();
 
+    // Tab visibility handling: pause render loop and audio when document is hidden
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        animRunning = false;
+        cancelAnimationFrame(animId);
+        frames.forEach((f) => {
+          if (f.video && !f.video.paused) {
+            f.video.pause();
+          }
+        });
+        if (modalVideoRef.current && !modalVideoRef.current.paused) {
+          modalVideoRef.current.pause();
+          setIsPlaying(false);
+        }
+      } else {
+        if (!animRunning && !isDisposed && isActiveRef.current) {
+          animRunning = true;
+          animId = requestAnimationFrame(renderFrame);
+          const focal = frames[PAD + activeClipIndex];
+          if (focal && focal.video && focal.playing) {
+            focal.video.play().catch(() => {});
+          }
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Root intersection observer: only decode and render while element is visible
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry.isIntersecting) {
+          animRunning = false;
+          cancelAnimationFrame(animId);
+          frames.forEach((f) => {
+            if (f.video && !f.video.paused) {
+              f.video.pause();
+            }
+          });
+        } else if (!animRunning && !isDisposed && isActiveRef.current && !document.hidden) {
+          animRunning = true;
+          animId = requestAnimationFrame(renderFrame);
+        }
+      },
+      { threshold: 0.25 }
+    );
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
     return () => {
       isDisposed = true;
       animRunning = false;
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.clearTimeout(safetyTimeout);
       resumeLoopRef.current = () => {};
+      setReelTargetRef.current = () => {};
       cancelAnimationFrame(animId);
       cv.removeEventListener('wheel', handleWheel);
       cv.removeEventListener('pointerdown', handlePointerDown);
@@ -1492,7 +1629,8 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
       frames.forEach((f) => {
         if (f.video) {
           f.video.pause();
-          f.video.src = '';
+          f.video.removeAttribute('src');
+          f.video.load();
           f.video.remove();
         }
       });
@@ -1703,7 +1841,8 @@ export const FilmReelCanvas: React.FC<FilmReelCanvasProps> = ({
           <div className="relative max-w-[100vw] max-h-[66dvh] flex items-center justify-center">
             <video
               ref={modalVideoRef}
-              src={HERO_CLIPS[activeClipIndex]?.src}
+              src={HERO_CLIPS[activeClipIndex] ? (typeof window !== 'undefined' && window.innerWidth <= 768 ? HERO_CLIPS[activeClipIndex].mobileSrc : HERO_CLIPS[activeClipIndex].src) : undefined}
+              poster={HERO_CLIPS[activeClipIndex]?.poster}
               autoPlay
               playsInline
               loop

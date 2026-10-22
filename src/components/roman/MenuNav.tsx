@@ -28,7 +28,7 @@ export const MenuNav: React.FC<MenuNavProps> = ({
               e.preventDefault();
               onSelectSection(item.id);
             }}
-            className={`menu-link ${isActive ? 'active bg-[#ff0000] text-white' : 'text-white/80 hover:text-white'}`}
+            className={`menu-link ${isActive ? 'active bg-[#dc0000] text-white' : 'text-white/80 hover:text-white'}`}
           >
             {item.label}
           </a>

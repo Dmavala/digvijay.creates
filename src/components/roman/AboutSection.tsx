@@ -280,17 +280,17 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ isActive }) => {
         /* Cinematic Optical Blur Rack-Focus Stagger */
         .cinematic-blur-item {
           opacity: 0;
-          filter: blur(22px);
-          transform: translateY(20px) scale(0.98);
-          will-change: filter, opacity, transform;
-          transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
-                      filter 0.9s cubic-bezier(0.16, 1, 0.3, 1),
-                      transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+          filter: blur(12px);
+          transform: translateY(16px);
+          transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1),
+                      filter 0.75s cubic-bezier(0.16, 1, 0.3, 1),
+                      transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .about-active .cinematic-blur-item {
           opacity: 1;
           filter: blur(0px);
-          transform: translateY(0) scale(1);
+          transform: translateY(0);
+          will-change: auto;
         }
         .about-active .cinematic-blur-1 { transition-delay: 100ms; }
         .about-active .cinematic-blur-2 { transition-delay: 280ms; }

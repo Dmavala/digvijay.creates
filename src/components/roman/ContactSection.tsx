@@ -60,10 +60,10 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
               style={{
                 gridArea: '1 / 1 / 2 / 2',
                 color: '#22c55e',
-                filter: 'drop-shadow(0 0 50px rgba(34, 197, 94, 0.55))',
+                filter: 'drop-shadow(0 0 28px rgba(34, 197, 94, 0.55))',
                 opacity: hoveredSocial === 'MAIL' ? 1 : 0,
-                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1), filter 550ms cubic-bezier(0.16, 1, 0.3, 1)',
-                willChange: 'opacity, filter',
+                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1)',
+                willChange: 'opacity',
               }}
             >
               MEET ME
@@ -76,10 +76,10 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
               style={{
                 gridArea: '1 / 1 / 2 / 2',
                 color: '#0b66c2',
-                filter: 'drop-shadow(0 0 50px rgba(11, 102, 194, 0.6))',
+                filter: 'drop-shadow(0 0 28px rgba(11, 102, 194, 0.6))',
                 opacity: hoveredSocial === 'LNKD' ? 1 : 0,
-                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1), filter 550ms cubic-bezier(0.16, 1, 0.3, 1)',
-                willChange: 'opacity, filter',
+                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1)',
+                willChange: 'opacity',
               }}
             >
               MEET ME
@@ -92,10 +92,10 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
               style={{
                 gridArea: '1 / 1 / 2 / 2',
                 color: '#a855f7',
-                filter: 'drop-shadow(0 0 50px rgba(168, 85, 247, 0.65))',
+                filter: 'drop-shadow(0 0 28px rgba(168, 85, 247, 0.65))',
                 opacity: hoveredSocial === 'GHUB' ? 1 : 0,
-                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1), filter 550ms cubic-bezier(0.16, 1, 0.3, 1)',
-                willChange: 'opacity, filter',
+                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1)',
+                willChange: 'opacity',
               }}
             >
               MEET ME
@@ -110,10 +110,10 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
                 backgroundImage: 'linear-gradient(45deg, #f58529 0%, #dd2a7b 35%, #8134af 70%, #515bd4 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                filter: 'drop-shadow(0 0 50px rgba(221, 42, 123, 0.6))',
+                filter: 'drop-shadow(0 0 28px rgba(221, 42, 123, 0.6))',
                 opacity: hoveredSocial === 'INSTA' ? 1 : 0,
-                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1), filter 550ms cubic-bezier(0.16, 1, 0.3, 1)',
-                willChange: 'opacity, filter',
+                transition: 'opacity 550ms cubic-bezier(0.16, 1, 0.3, 1)',
+                willChange: 'opacity',
               }}
             >
               MEET ME
@@ -195,8 +195,8 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ isActive }) => {
                               : link.label === 'GHUB'
                               ? 'drop-shadow(0 0 16px rgba(168, 85, 247, 0.7))'
                               : 'drop-shadow(0 0 16px rgba(221, 42, 123, 0.7))',
-                          transition: 'opacity 450ms cubic-bezier(0.16, 1, 0.3, 1), filter 450ms cubic-bezier(0.16, 1, 0.3, 1)',
-                          willChange: 'opacity, filter',
+                          transition: 'opacity 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+                          willChange: 'opacity',
                         }}
                       >
                         {link.label}

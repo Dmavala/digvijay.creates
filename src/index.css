@@ -151,7 +151,7 @@ html, body {
   }
 
   .layout__menu a.active {
-    background-color: #ff0000;
+    background-color: #dc0000;
     color: #ffffff;
     border-radius: 9999px;
   }
@@ -182,28 +182,97 @@ html, body {
 }
 
 .layout__menu a.active {
-  background-color: #ff0000;
+  position: relative;
+  background-color: #dc0000;
   color: #ffffff;
-  animation: nav-settle 420ms cubic-bezier(0.16, 1, 0.3, 1) 1;
 }
 
-/* The active marker used to strobe its own opacity (1 → 0.25 → 1 → 0.35 → 1 in
-   350ms), which read as a rendering glitch and is a photosensitivity risk. It now
-   lands with a single soft red bloom that decays to nothing. */
-@keyframes nav-settle {
+.layout__menu a.active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 16px 4px rgba(220, 0, 0, 0.75);
+  opacity: 0;
+  pointer-events: none;
+  animation: nav-settle-glow 420ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+@keyframes nav-settle-glow {
   0% {
-    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+    opacity: 0;
   }
   35% {
-    box-shadow: 0 0 16px 4px rgba(255, 0, 0, 0.75);
+    opacity: 1;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+    opacity: 0;
   }
 }
 
 .layout__menu a:not(.active):hover {
   color: #ff0000;
+}
+
+/* Theme Toggle Switch */
+.theme-switch-container {
+  display: inline-flex;
+  align-items: center;
+}
+
+.theme-switch-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+.theme-switch-label {
+  --a: 0.5s ease-out;
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  height: var(--switch-size, 2em);
+  border-radius: 2em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  aspect-ratio: 212.4992/84.4688;
+  background-color: var(--switch-track, #2c4157);
+  transition: background-color var(--a), box-shadow var(--a), transform 0.2s ease;
+}
+
+.theme-switch-label:hover {
+  transform: scale(1.06);
+}
+
+.theme-switch-label:active {
+  transform: scale(0.96);
+}
+
+.theme-switch-label svg {
+  height: 100%;
+  width: 100%;
+  display: block;
+}
+
+.theme-switch-label svg path {
+  color: #fff;
+  stroke-width: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 136 224;
+  transition: stroke-dashoffset var(--a), transform 0s, color var(--a);
+  transform-origin: center;
+}
+
+.theme-switch-input:checked ~ .theme-switch-label svg path {
+  stroke-dashoffset: 180;
+  transform: scaleY(-1);
+}
+
+.theme-switch-input:checked ~ .theme-switch-label {
+  background-color: var(--switch-active-track, #ff0000);
+  box-shadow: 0 4px 18px rgba(255, 0, 0, 0.35);
 }
 
 /* Fullscreen Section Container */
